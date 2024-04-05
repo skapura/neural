@@ -5,6 +5,7 @@ import numpy as np
 import math
 import ssl
 import cv2
+from sklearn.preprocessing import MinMaxScaler
 from keras.preprocessing.image import load_img, img_to_array
 from tensorflow.keras import datasets, layers, models, backend
 import matplotlib.pyplot as plt
@@ -126,10 +127,48 @@ def rotate3(mat, angle):
     return rotated_mat
 
 
-def renderSummary(image, label, maps):
+def renderClassScores(classes, output):
+    scaler = MinMaxScaler(feature_range=(-100, 100))
+    rout = scaler.fit_transform(output.reshape(-1, 1)).flatten()
+
+    # Get max text rendered length
+    th = 0
+    for c in classes:
+        (lw, _), _ = cv2.getTextSize(c, cv2.FONT_HERSHEY_PLAIN, 1, 1)
+        th = max(th, lw)
+
+    canvas = np.full((th + 200, len(classes) * 20 - 5, 3), 255, np.uint8)
+
+    # Render bar plot
+    x = 0
+    for o in rout:
+        y = 100 - int(o)
+        y1 = min(y, 100) - 1
+        y2 = max(y, 100) - 1
+        cv2.rectangle(canvas, (x, y1), (x + 15, y2), (255, 0, 0), -1)
+        x += 20
+    cv2.line(canvas, (0, 99), (canvas.shape[0] - 1, 99), (0, 0, 0), 2)
+
+    # Render class labels
+    y = 200
+    x = 0
+    for c in classes:
+        (lw, lh), _ = cv2.getTextSize(c, cv2.FONT_HERSHEY_PLAIN, 1, 1)
+        tc = np.full((lh, lw, 3), 255, np.uint8)
+        tc = cv2.putText(tc, c, (0, lh), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
+        tc = rotate3(tc, 90)
+        canvas[y:y + tc.shape[0], x:x + tc.shape[1]] = tc
+        x += 20
+
+    return canvas
+
+
+def renderSummary(image, label, maps, classes, output):
     rmaps = [renderFeatureMaps(m['output']) for m in maps]
+    rclasses = renderClassScores(classes, output)
+
     (_, lh), _ = cv2.getTextSize('0', cv2.FONT_HERSHEY_PLAIN, 1, 1)
-    h = sum(m.shape[0] for m in rmaps) + image.shape[0] + len(rmaps) * (lh + 2) + 6
+    h = sum(m.shape[0] for m in rmaps) + rclasses.shape[0] + image.shape[0] + len(rmaps) * (lh + 2) + 6
     w = max(m.shape[1] for m in rmaps)
     canvas = np.full((h, w, 3), 255, np.uint8)
 
@@ -143,9 +182,9 @@ def renderSummary(image, label, maps):
     canvas[y:y + image.shape[0], x + 1:x + image.shape[1] + 1] = image
     canvas = cv2.putText(canvas, label, (x + image.shape[1] + 5, y + 20), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
 
-    (lw, lh), _ = cv2.getTextSize('0123456789', cv2.FONT_HERSHEY_PLAIN, 1, 1)
-    tc = np.full((lh, lw, 3), 255, np.uint8)
-    tc = cv2.putText(tc, '0123456789', (0, lh), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
+    #(lw, lh), _ = cv2.getTextSize('0123456789', cv2.FONT_HERSHEY_PLAIN, 1, 1)
+    #tc = np.full((lh, lw, 3), 255, np.uint8)
+    #tc = cv2.putText(tc, '0123456789', (0, lh), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
 
     #M = cv2.getRotationMatrix2D((lw / 2, lh / 2), 90, 1)
     #tc = cv2.warpAffine(tc, M, (lw, lh))
@@ -154,19 +193,21 @@ def renderSummary(image, label, maps):
     #rows, cols, _ = tc.shape
     #M = cv2.getRotationMatrix2D((cols / 2, rows / 2), 90, 1)
     #tc = cv2.warpAffine(tc, M, (rows, cols))
-    tc = rotate3(tc, 90)
+    #tc = rotate3(tc, 90)
     #cv2.imwrite('text.png', tc)
-    canvas[100:100 + tc.shape[0], 100:100 + tc.shape[1]] = tc
+    #canvas[100:100 + tc.shape[0], 100:100 + tc.shape[1]] = tc
 
-    #y += image.shape[0] + 5
-    #for i in range(len(rmaps)):
-    #    rgbmap = cv2.cvtColor(rmaps[i], cv2.COLOR_GRAY2RGB)
-    #    #mapy = y + image.shape[0] + 5
-    #    title = maps[i]['name'] + ' - ' + str(maps[i]['output'].shape[0]) + 'x' + str(maps[i]['output'].shape[1]) + 'x' + str(maps[i]['output'].shape[2])
-    #    canvas = cv2.putText(canvas, title, (1, y + lh), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
-    #    y += lh + 1
-    #    canvas[y:y + rgbmap.shape[0], x:x + rgbmap.shape[1]] = rgbmap
-    #    y += rgbmap.shape[0] + 1
+    y += image.shape[0] + 5
+    for i in range(len(rmaps)):
+        rgbmap = cv2.cvtColor(rmaps[i], cv2.COLOR_GRAY2RGB)
+        #mapy = y + image.shape[0] + 5
+        title = maps[i]['name'] + ' - ' + str(maps[i]['output'].shape[0]) + 'x' + str(maps[i]['output'].shape[1]) + 'x' + str(maps[i]['output'].shape[2])
+        canvas = cv2.putText(canvas, title, (1, y + lh), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
+        y += lh + 1
+        canvas[y:y + rgbmap.shape[0], x:x + rgbmap.shape[1]] = rgbmap
+        y += rgbmap.shape[0] + 1
+
+    canvas[y:y + rclasses.shape[0], 1:1 + rclasses.shape[1]] = rclasses
     cv2.imwrite('canvas.png', canvas)
     print(1)
 
@@ -197,7 +238,7 @@ l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in rang
 
 layer1 = outs[3][0]
 #renderSummary(orig_test_images[0], class_names[test_labels[0][0]], layer1)
-renderSummary(orig_test_images[0], class_names[test_labels[0][0]], l)
+renderSummary(orig_test_images[0], class_names[test_labels[0][0]], l, class_names, outs[-1][0])
 
 f_min, f_max = filters.min(), filters.max()
 filters = (filters - f_min) / (f_max - f_min)
