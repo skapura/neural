@@ -5,6 +5,8 @@ import numpy as np
 import math
 import ssl
 import cv2
+import shutil
+import os
 from sklearn.preprocessing import MinMaxScaler
 from keras.preprocessing.image import load_img, img_to_array
 from tensorflow.keras import datasets, layers, models, backend
@@ -48,6 +50,14 @@ def selectImages(images, labels, indexlist, condition=None):
     if condition is not None:
         selected = [x for x in selected if condition(x)]
     return selected
+
+
+def collectImageSet(images, labels, classnames):
+    shutil.rmtree('imageset')
+    os.mkdir('imageset')
+    for img in images:
+        path = str(img).zfill(5) + ' - ' + classnames[labels[img][0]] + '.png'
+        shutil.copy('images/' + path, 'imageset')
 
 
 def renderFilters(maps):
@@ -273,8 +283,7 @@ correct, incorrect = evalModel(test_images, test_labels, model)
 wrong_test_images = test_images[incorrect]
 wrong_test_labels = test_labels[incorrect]
 
-#wrongimage = orig_test_images[incorrect[1]]
-#correctlabel = class_names[test_labels[incorrect[1]][0]]
+collectImageSet(incorrect, test_labels, class_names)
 incorrectindex = incorrect[2]
 title = str(incorrectindex)
 wrongimage = orig_test_images[incorrectindex]
