@@ -6,6 +6,7 @@ dist/
 bin/
 lib/
 share/
+imageset/
 __pycache__/
 *.spec
 .session

@@ -23,6 +23,19 @@ def makeDebugModel(model, onlyconv=False):
 
 def evalModel(X, y, model):
     ypreds = model.predict(X)
+    #correct = list()
+    #incorrect = list()
+    #for i in range(len(y)):
+    #    yp = ypreds[i]
+    #    maxclass = np.argmax(yp)
+    #    correctclass = y[i][0]
+    #    if y[i][0] == maxclass:
+    #        correct.append(i)
+    #    else:
+    #        incorrect.append(i)
+    #    #print(1)
+
+
     ymaxpreds = [np.argmax(x) for x in ypreds]
     eval = [x[0] == x[1] for x in zip(map(lambda x: x[0], y), ymaxpreds)]
     correct = [i for i, elem in enumerate(eval) if elem]
@@ -130,6 +143,7 @@ def rotate3(mat, angle):
 def renderClassScores(classes, output):
     scaler = MinMaxScaler(feature_range=(-100, 100))
     rout = scaler.fit_transform(output.reshape(-1, 1)).flatten()
+    maxindex = max(enumerate(output), key=lambda x: x[1])[0]
 
     # Get max text rendered length
     th = 0
@@ -141,12 +155,18 @@ def renderClassScores(classes, output):
 
     # Render bar plot
     x = 0
+    i = 0
     for o in rout:
         y = 100 - int(o)
         y1 = min(y, 100) - 1
         y2 = max(y, 100) - 1
-        cv2.rectangle(canvas, (x, y1), (x + 15, y2), (255, 0, 0), -1)
+        if i == maxindex:
+            color = (0, 0, 255)
+        else:
+            color = (255, 0, 0)
+        cv2.rectangle(canvas, (x, y1), (x + 15, y2), color, -1)
         x += 20
+        i += 1
     cv2.line(canvas, (0, 99), (canvas.shape[0] - 1, 99), (0, 0, 0), 2)
 
     # Render class labels
@@ -163,7 +183,7 @@ def renderClassScores(classes, output):
     return canvas
 
 
-def renderSummary(image, label, maps, classes, output):
+def renderSummary(image, title, label, maps, classes, output):
     rmaps = [renderFeatureMaps(m['output']) for m in maps]
     rclasses = renderClassScores(classes, output)
 
@@ -179,8 +199,8 @@ def renderSummary(image, label, maps, classes, output):
 
     x = 0
     y = 1
-    canvas[y:y + image.shape[0], x + 1:x + image.shape[1] + 1] = image
-    canvas = cv2.putText(canvas, label, (x + image.shape[1] + 5, y + 20), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
+    canvas[y:y + image.shape[0], x + 1:x + image.shape[1] + 1] = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    canvas = cv2.putText(canvas, title + ' - ' + label, (x + image.shape[1] + 5, y + 20), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
 
     #(lw, lh), _ = cv2.getTextSize('0123456789', cv2.FONT_HERSHEY_PLAIN, 1, 1)
     #tc = np.full((lh, lw, 3), 255, np.uint8)
@@ -222,6 +242,13 @@ train_images, test_images = orig_train_images / 255.0, orig_test_images / 255.0
 class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
                'dog', 'frog', 'horse', 'ship', 'truck']
 
+#for i in range(len(orig_test_images)):
+#    img = cv2.cvtColor(orig_test_images[i], cv2.COLOR_RGB2BGR)
+#    imgclass = class_names[test_labels[i][0]]
+#    cv2.imwrite('images/' + str(i).zfill(5) + ' - ' + imgclass + '.png', img)
+
+
+
 model = models.load_model('testmodel.keras')
 print(model.summary())
 
@@ -230,7 +257,8 @@ print(backend.image_data_format())
 filters, bias = debugmodel.layers[1].get_weights()
 #renderFilters(filters)
 
-outs = debugmodel.predict(np.asarray([test_images[0]]))
+ti = 0
+outs = debugmodel.predict(np.asarray([test_images[ti]]))
 
 l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
 
@@ -238,7 +266,23 @@ l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in rang
 
 layer1 = outs[3][0]
 #renderSummary(orig_test_images[0], class_names[test_labels[0][0]], layer1)
-renderSummary(orig_test_images[0], class_names[test_labels[0][0]], l, class_names, outs[-1][0])
+#renderSummary(orig_test_images[ti], class_names[test_labels[ti][0]], l, class_names, outs[-1][0])
+
+correct, incorrect = evalModel(test_images, test_labels, model)
+
+wrong_test_images = test_images[incorrect]
+wrong_test_labels = test_labels[incorrect]
+
+#wrongimage = orig_test_images[incorrect[1]]
+#correctlabel = class_names[test_labels[incorrect[1]][0]]
+incorrectindex = incorrect[2]
+title = str(incorrectindex)
+wrongimage = orig_test_images[incorrectindex]
+correctlabel = class_names[test_labels[incorrectindex][0]]
+outs = debugmodel.predict(np.asarray([test_images[incorrectindex]]))
+#outs2 = debugmodel.predict(np.asarray([wrongimage]))
+l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
+renderSummary(wrongimage, title, correctlabel, l, class_names, outs[-1][0])
 
 f_min, f_max = filters.min(), filters.max()
 filters = (filters - f_min) / (f_max - f_min)
