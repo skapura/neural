@@ -11,6 +11,7 @@ from sklearn.preprocessing import MinMaxScaler
 from keras.preprocessing.image import load_img, img_to_array
 from tensorflow.keras import datasets, layers, models, backend
 import matplotlib.pyplot as plt
+import mlutil
 # numpy: height X width
 # cv2: width X height
 
@@ -42,7 +43,8 @@ def evalModel(X, y, model):
     eval = [x[0] == x[1] for x in zip(map(lambda x: x[0], y), ymaxpreds)]
     correct = [i for i, elem in enumerate(eval) if elem]
     incorrect = [i for i, elem in enumerate(eval) if not elem]
-    return correct, incorrect
+    wronganswers = [{'index': i, 'correct': y[i][0], 'predicted': ymaxpreds[i]} for i in incorrect]
+    return correct, incorrect, wronganswers
 
 
 def selectImages(images, labels, indexlist, condition=None):
@@ -278,10 +280,26 @@ layer1 = outs[3][0]
 #renderSummary(orig_test_images[0], class_names[test_labels[0][0]], layer1)
 #renderSummary(orig_test_images[ti], class_names[test_labels[ti][0]], l, class_names, outs[-1][0])
 
-correct, incorrect = evalModel(test_images, test_labels, model)
+correct, incorrect, wronganswers = evalModel(test_images, test_labels, model)
 
 wrong_test_images = test_images[incorrect]
 wrong_test_labels = test_labels[incorrect]
+
+idx = class_names.index('dog')
+matches = [x for x in wronganswers if x['correct'] == idx]
+
+imageindex = matches[0]['index']
+outs = debugmodel.predict(np.asarray([test_images[imageindex]]))
+l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0],
+      'kernel': debugmodel.layers[i + 1].kernel_size if 'conv2d' in debugmodel.layers[i + 1].name else debugmodel.layers[i + 1].pool_size,
+      'stride': debugmodel.layers[i + 1].strides} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
+
+ll = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if '2d' in l.name]
+ll.insert(0, {'kernel': debugmodel.layers[1].kernel_size, 'stride': debugmodel.layers[1].strides})
+
+
+fieldx, fieldy = mlutil.calcReceptiveField(3, 3, ll)
+
 
 collectImageSet(incorrect, test_labels, class_names)
 incorrectindex = incorrect[2]
