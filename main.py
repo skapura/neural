@@ -296,11 +296,11 @@ l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in rang
 ll = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if '2d' in l.name]
 ll.insert(0, {'kernel': debugmodel.layers[1].kernel_size, 'stride': debugmodel.layers[1].strides})
 
-o = l[0]['output'][:, :, 1]
-#o = l[-1]['output'][:, :, 0]
+#o = l[0]['output'][:, :, 1]
+o = l[-1]['output'][:, :, 0]
 #fieldx, fieldy = mlutil.calcReceptiveField(3, 3, ll)
-plotReceptiveField(orig_test_images[imageindex], [ll[0]], o)
-#plotReceptiveField(orig_test_images[imageindex], ll, o)
+#plotReceptiveField(orig_test_images[imageindex], [ll[0]], o)
+plotReceptiveField(orig_test_images[imageindex], ll, o)
 
 collectImageSet(incorrect, test_labels, class_names)
 incorrectindex = incorrect[2]
