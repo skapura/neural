@@ -7,45 +7,13 @@ import ssl
 import cv2
 import shutil
 import os
-from sklearn.preprocessing import MinMaxScaler
 from keras.preprocessing.image import load_img, img_to_array
 from tensorflow.keras import datasets, layers, models, backend
 import matplotlib.pyplot as plt
-import mlutil
-from plot import plotReceptiveField
+from mlutil import makeDebugModel, evalModel
+from plot import plotReceptiveField, renderSummary
 # numpy: height X width
 # cv2: width X height
-
-def makeDebugModel(model, onlyconv=False):
-    if onlyconv:
-        outputs = [layer.output for layer in model.layers if type(layer) is keras.layers.Conv2D]
-    else:
-        outputs = [layer.output for layer in model.layers]
-    debugmodel = models.Model(inputs=model.inputs, outputs=outputs)
-    return debugmodel
-
-
-def evalModel(X, y, model):
-    ypreds = model.predict(X)
-    #correct = list()
-    #incorrect = list()
-    #for i in range(len(y)):
-    #    yp = ypreds[i]
-    #    maxclass = np.argmax(yp)
-    #    correctclass = y[i][0]
-    #    if y[i][0] == maxclass:
-    #        correct.append(i)
-    #    else:
-    #        incorrect.append(i)
-    #    #print(1)
-
-
-    ymaxpreds = [np.argmax(x) for x in ypreds]
-    eval = [x[0] == x[1] for x in zip(map(lambda x: x[0], y), ymaxpreds)]
-    correct = [i for i, elem in enumerate(eval) if elem]
-    incorrect = [i for i, elem in enumerate(eval) if not elem]
-    wronganswers = [{'index': i, 'correct': y[i][0], 'predicted': ymaxpreds[i]} for i in incorrect]
-    return correct, incorrect, wronganswers
 
 
 def selectImages(images, labels, indexlist, condition=None):
@@ -94,155 +62,6 @@ def renderFilters(maps):
     #r = cv2.resize(r, (fw, fh), interpolation=cv2.INTER_NEAREST_EXACT)
     cv2.imwrite('filters.png', img)
 
-    print(1)
-
-
-def renderFeatureMaps(maps):
-    fh = 30#maps.shape[0]
-    fw = 30#maps.shape[1]
-    xmaps = 30
-    numfilters = maps.shape[-1]
-    ymaps = math.ceil(numfilters / xmaps)
-    f_min, f_max = maps.min(), maps.max()
-    scaled = np.interp(maps, [f_min, f_max], [0, 255]).astype(np.uint8)
-    (_, lh), _ = cv2.getTextSize('0', cv2.FONT_HERSHEY_PLAIN, 1, 1)
-    img = np.full(((fh + lh + 2) * ymaps + 1, (fw + 1) * xmaps + 1), 255, np.uint8)
-    x = 1
-    y = 0
-    for i in range(0, numfilters):
-        filter = scaled[:, :, i]
-        #r = np.rollaxis(filter, 1)  # swap HxW->WxH for cv2
-        (_, lh), _ = cv2.getTextSize(str(i), cv2.FONT_HERSHEY_PLAIN, 1, 1)
-        img = cv2.putText(img, str(i), (x, y + lh + 1), cv2.FONT_HERSHEY_PLAIN, 1, 0, 1)
-        r = cv2.resize(filter, (fh, fw), interpolation=cv2.INTER_NEAREST_EXACT)
-        img[y + lh + 2:y + r.shape[0] + lh + 2, x:x + r.shape[1]] = r
-        if (i + 1) % xmaps == 0:
-            x = 1
-            y += fh + lh + 2
-        else:
-            x += fw + 1
-
-    return img
-
-
-def rotate3(mat, angle):
-    """
-    Rotates an image (angle in degrees) and expands image to avoid cropping
-    """
-
-    height, width = mat.shape[:2]  # image shape has 3 dimensions
-    image_center = (
-    width / 2, height / 2)  # getRotationMatrix2D needs coordinates in reverse order (width, height) compared to shape
-
-    rotation_mat = cv2.getRotationMatrix2D(image_center, angle, 1.)
-
-    # rotation calculates the cos and sin, taking absolutes of those.
-    abs_cos = abs(rotation_mat[0, 0])
-    abs_sin = abs(rotation_mat[0, 1])
-
-    # find the new width and height bounds
-    bound_w = int(height * abs_sin + width * abs_cos)
-    bound_h = int(height * abs_cos + width * abs_sin)
-
-    # subtract old image center (bringing image back to origo) and adding the new image center coordinates
-    rotation_mat[0, 2] += bound_w / 2 - image_center[0]
-    rotation_mat[1, 2] += bound_h / 2 - image_center[1]
-
-    # rotate image with the new bounds and translated rotation matrix
-    rotated_mat = cv2.warpAffine(mat, rotation_mat, (bound_w, bound_h), borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
-    return rotated_mat
-
-
-def renderClassScores(classes, output):
-    scaler = MinMaxScaler(feature_range=(-100, 100))
-    rout = scaler.fit_transform(output.reshape(-1, 1)).flatten()
-    maxindex = max(enumerate(output), key=lambda x: x[1])[0]
-
-    # Get max text rendered length
-    th = 0
-    for c in classes:
-        (lw, _), _ = cv2.getTextSize(c, cv2.FONT_HERSHEY_PLAIN, 1, 1)
-        th = max(th, lw)
-
-    canvas = np.full((th + 200, len(classes) * 20 - 5, 3), 255, np.uint8)
-
-    # Render bar plot
-    x = 0
-    i = 0
-    for o in rout:
-        y = 100 - int(o)
-        y1 = min(y, 100) - 1
-        y2 = max(y, 100) - 1
-        if i == maxindex:
-            color = (0, 0, 255)
-        else:
-            color = (255, 0, 0)
-        cv2.rectangle(canvas, (x, y1), (x + 15, y2), color, -1)
-        x += 20
-        i += 1
-    cv2.line(canvas, (0, 99), (canvas.shape[0] - 1, 99), (0, 0, 0), 2)
-
-    # Render class labels
-    y = 200
-    x = 0
-    for c in classes:
-        (lw, lh), _ = cv2.getTextSize(c, cv2.FONT_HERSHEY_PLAIN, 1, 1)
-        tc = np.full((lh, lw, 3), 255, np.uint8)
-        tc = cv2.putText(tc, c, (0, lh), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
-        tc = rotate3(tc, 90)
-        canvas[y:y + tc.shape[0], x:x + tc.shape[1]] = tc
-        x += 20
-
-    return canvas
-
-
-def renderSummary(image, title, label, maps, classes, output):
-    rmaps = [renderFeatureMaps(m['output']) for m in maps]
-    rclasses = renderClassScores(classes, output)
-
-    (_, lh), _ = cv2.getTextSize('0', cv2.FONT_HERSHEY_PLAIN, 1, 1)
-    h = sum(m.shape[0] for m in rmaps) + rclasses.shape[0] + image.shape[0] + len(rmaps) * (lh + 2) + 6
-    w = max(m.shape[1] for m in rmaps)
-    canvas = np.full((h, w, 3), 255, np.uint8)
-
-    #renderedmaps = renderFeatureMaps(maps)
-    #h = renderedmaps.shape[0] + image.shape[0] + 6
-    #w = renderedmaps.shape[1]
-    #canvas = np.full((h, w, 3), 255, np.uint8)
-
-    x = 0
-    y = 1
-    canvas[y:y + image.shape[0], x + 1:x + image.shape[1] + 1] = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-    canvas = cv2.putText(canvas, title + ' - ' + label, (x + image.shape[1] + 5, y + 20), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
-
-    #(lw, lh), _ = cv2.getTextSize('0123456789', cv2.FONT_HERSHEY_PLAIN, 1, 1)
-    #tc = np.full((lh, lw, 3), 255, np.uint8)
-    #tc = cv2.putText(tc, '0123456789', (0, lh), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
-
-    #M = cv2.getRotationMatrix2D((lw / 2, lh / 2), 90, 1)
-    #tc = cv2.warpAffine(tc, M, (lw, lh))
-    #canvas[100:100 + tc.shape[0], 100:100 + tc.shape[1]] = tc
-
-    #rows, cols, _ = tc.shape
-    #M = cv2.getRotationMatrix2D((cols / 2, rows / 2), 90, 1)
-    #tc = cv2.warpAffine(tc, M, (rows, cols))
-    #tc = rotate3(tc, 90)
-    #cv2.imwrite('text.png', tc)
-    #canvas[100:100 + tc.shape[0], 100:100 + tc.shape[1]] = tc
-
-    y += image.shape[0] + 5
-    for i in range(len(rmaps)):
-        rgbmap = cv2.cvtColor(rmaps[i], cv2.COLOR_GRAY2RGB)
-        #mapy = y + image.shape[0] + 5
-        title = maps[i]['name'] + ' - ' + str(maps[i]['output'].shape[0]) + 'x' + str(maps[i]['output'].shape[1]) + 'x' + str(maps[i]['output'].shape[2])
-        canvas = cv2.putText(canvas, title, (1, y + lh), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
-        y += lh + 1
-        canvas[y:y + rgbmap.shape[0], x:x + rgbmap.shape[1]] = rgbmap
-        y += rgbmap.shape[0] + 1
-
-    canvas[y:y + rclasses.shape[0], 1:1 + rclasses.shape[1]] = rclasses
-    cv2.imwrite('canvas.png', canvas)
-    print(1)
 
 
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -270,18 +89,48 @@ print(backend.image_data_format())
 filters, bias = debugmodel.layers[1].get_weights()
 #renderFilters(filters)
 
-ti = 0
-outs = debugmodel.predict(np.asarray([test_images[ti]]))
+#ti = 0
+#outs = debugmodel.predict(np.asarray([test_images[ti]]))
 
-l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
+#l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
 
-
-
-layer1 = outs[3][0]
-#renderSummary(orig_test_images[0], class_names[test_labels[0][0]], layer1)
-#renderSummary(orig_test_images[ti], class_names[test_labels[ti][0]], l, class_names, outs[-1][0])
 
 correct, incorrect, wronganswers = evalModel(test_images, test_labels, model)
+
+di = class_names.index('dog')
+ci = class_names.index('cat')
+correctdoglist = list()
+correctcatlist = list()
+incorrectdoglist = list()
+incorrectcatlist = list()
+totals = dict()
+for a in wronganswers:
+    key = str(a['correct']) + '_' + str(a['predicted'])
+    if key in totals:
+        totals[key] = totals[key] + 1
+    else:
+        totals[key] = 1
+
+    if a['correct'] == di and a['predicted'] == ci:
+        incorrectdoglist.append(a['index'])
+    elif a['correct'] == ci and a['predicted'] == di:
+        incorrectcatlist.append(a['index'])
+
+for t in totals:
+    classes = t.split('_')
+    print(class_names[int(classes[0])] + '->' + class_names[int(classes[1])] + ': ' + str(totals[t]))
+
+correctdog = 0
+correctcat = 0
+for c in correct:
+    if test_labels[c][0] == di:
+        correctdog += 1
+        correctdoglist.append(c)
+    elif test_labels[c][0] == ci:
+        correctcat += 1
+        correctcatlist.append(c)
+print('correct dog: ' + str(correctdog))
+print('correct cat: ' + str(correctcat))
 
 wrong_test_images = test_images[incorrect]
 wrong_test_labels = test_labels[incorrect]
@@ -291,16 +140,18 @@ matches = [x for x in wronganswers if x['correct'] == idx]
 
 imageindex = matches[0]['index']
 outs = debugmodel.predict(np.asarray([test_images[imageindex]]))
-l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
+layeroutputs = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
 
-ll = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if '2d' in l.name]
-ll.insert(0, {'kernel': debugmodel.layers[1].kernel_size, 'stride': debugmodel.layers[1].strides})
+layerinfo = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if '2d' in l.name]
+layerinfo.insert(0, {'kernel': debugmodel.layers[1].kernel_size, 'stride': debugmodel.layers[1].strides})
 
 #o = l[0]['output'][:, :, 1]
-o = l[-1]['output'][:, :, 0]
+o = layeroutputs[-1]['output'][:, :, 0]
 #fieldx, fieldy = mlutil.calcReceptiveField(3, 3, ll)
 #plotReceptiveField(orig_test_images[imageindex], [ll[0]], o)
-plotReceptiveField(orig_test_images[imageindex], ll, o)
+plotReceptiveField(orig_test_images[imageindex], layerinfo, o)
+
+renderSummary(orig_test_images[imageindex], str(imageindex), class_names[test_labels[imageindex][0]], layeroutputs, class_names, outs[-1][0])
 
 collectImageSet(incorrect, test_labels, class_names)
 incorrectindex = incorrect[2]

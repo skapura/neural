@@ -1,7 +1,135 @@
 import cv2
-import numpy as np
 from sklearn.preprocessing import MinMaxScaler
+import numpy as np
+import math
 import mlutil
+
+
+def renderFeatureMaps(maps):
+    fh = 30#maps.shape[0]
+    fw = 30#maps.shape[1]
+    xmaps = 30
+    numfilters = maps.shape[-1]
+    ymaps = math.ceil(numfilters / xmaps)
+    f_min, f_max = maps.min(), maps.max()
+    scaled = np.interp(maps, [f_min, f_max], [0, 255]).astype(np.uint8)
+    (_, lh), _ = cv2.getTextSize('0', cv2.FONT_HERSHEY_PLAIN, 1, 1)
+    img = np.full(((fh + lh + 2) * ymaps + 1, (fw + 1) * xmaps + 1), 255, np.uint8)
+    x = 1
+    y = 0
+    for i in range(0, numfilters):
+        filter = scaled[:, :, i]
+        #r = np.rollaxis(filter, 1)  # swap HxW->WxH for cv2
+        (_, lh), _ = cv2.getTextSize(str(i), cv2.FONT_HERSHEY_PLAIN, 1, 1)
+        img = cv2.putText(img, str(i), (x, y + lh + 1), cv2.FONT_HERSHEY_PLAIN, 1, 0, 1)
+        r = cv2.resize(filter, (fh, fw), interpolation=cv2.INTER_NEAREST_EXACT)
+        img[y + lh + 2:y + r.shape[0] + lh + 2, x:x + r.shape[1]] = r
+        if (i + 1) % xmaps == 0:
+            x = 1
+            y += fh + lh + 2
+        else:
+            x += fw + 1
+
+    return img
+
+
+def rotate3(mat, angle):
+    """
+    Rotates an image (angle in degrees) and expands image to avoid cropping
+    """
+
+    height, width = mat.shape[:2]  # image shape has 3 dimensions
+    image_center = (
+    width / 2, height / 2)  # getRotationMatrix2D needs coordinates in reverse order (width, height) compared to shape
+
+    rotation_mat = cv2.getRotationMatrix2D(image_center, angle, 1.)
+
+    # rotation calculates the cos and sin, taking absolutes of those.
+    abs_cos = abs(rotation_mat[0, 0])
+    abs_sin = abs(rotation_mat[0, 1])
+
+    # find the new width and height bounds
+    bound_w = int(height * abs_sin + width * abs_cos)
+    bound_h = int(height * abs_cos + width * abs_sin)
+
+    # subtract old image center (bringing image back to origo) and adding the new image center coordinates
+    rotation_mat[0, 2] += bound_w / 2 - image_center[0]
+    rotation_mat[1, 2] += bound_h / 2 - image_center[1]
+
+    # rotate image with the new bounds and translated rotation matrix
+    rotated_mat = cv2.warpAffine(mat, rotation_mat, (bound_w, bound_h), borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
+    return rotated_mat
+
+
+def renderClassScores(classes, output):
+    scaler = MinMaxScaler(feature_range=(-100, 100))
+    rout = scaler.fit_transform(output.reshape(-1, 1)).flatten()
+    maxindex = max(enumerate(output), key=lambda x: x[1])[0]
+
+    # Get max text rendered length
+    th = 0
+    for c in classes:
+        (lw, _), _ = cv2.getTextSize(c, cv2.FONT_HERSHEY_PLAIN, 1, 1)
+        th = max(th, lw)
+
+    canvas = np.full((th + 200, len(classes) * 20 - 5, 3), 255, np.uint8)
+
+    # Render bar plot
+    x = 0
+    i = 0
+    for o in rout:
+        y = 100 - int(o)
+        y1 = min(y, 100) - 1
+        y2 = max(y, 100) - 1
+        if i == maxindex:
+            color = (0, 0, 255)
+        else:
+            color = (255, 0, 0)
+        cv2.rectangle(canvas, (x, y1), (x + 15, y2), color, -1)
+        x += 20
+        i += 1
+    cv2.line(canvas, (0, 99), (canvas.shape[0] - 1, 99), (0, 0, 0), 2)
+
+    # Render class labels
+    y = 200
+    x = 0
+    for c in classes:
+        (lw, lh), _ = cv2.getTextSize(c, cv2.FONT_HERSHEY_PLAIN, 1, 1)
+        tc = np.full((lh, lw, 3), 255, np.uint8)
+        tc = cv2.putText(tc, c, (0, lh), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
+        tc = rotate3(tc, 90)
+        canvas[y:y + tc.shape[0], x:x + tc.shape[1]] = tc
+        x += 20
+
+    return canvas
+
+
+def renderSummary(image, title, label, maps, classes, output):
+    rmaps = [renderFeatureMaps(m['output']) for m in maps]
+    rclasses = renderClassScores(classes, output)
+
+    (_, lh), _ = cv2.getTextSize('0', cv2.FONT_HERSHEY_PLAIN, 1, 1)
+    h = sum(m.shape[0] for m in rmaps) + rclasses.shape[0] + image.shape[0] + len(rmaps) * (lh + 2) + 6
+    w = max(m.shape[1] for m in rmaps)
+    canvas = np.full((h, w, 3), 255, np.uint8)
+
+    x = 0
+    y = 1
+    canvas[y:y + image.shape[0], x + 1:x + image.shape[1] + 1] = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    canvas = cv2.putText(canvas, title + ' - ' + label, (x + image.shape[1] + 5, y + 20), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
+
+    y += image.shape[0] + 5
+    for i in range(len(rmaps)):
+        rgbmap = cv2.cvtColor(rmaps[i], cv2.COLOR_GRAY2RGB)
+        title = maps[i]['name'] + ' - ' + str(maps[i]['output'].shape[0]) + 'x' + str(maps[i]['output'].shape[1]) + 'x' + str(maps[i]['output'].shape[2])
+        canvas = cv2.putText(canvas, title, (1, y + lh), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
+        y += lh + 1
+        canvas[y:y + rgbmap.shape[0], x:x + rgbmap.shape[1]] = rgbmap
+        y += rgbmap.shape[0] + 1
+
+    canvas[y:y + rclasses.shape[0], 1:1 + rclasses.shape[1]] = rclasses
+    return canvas
+
 
 def plotReceptiveField(image, layers, fmap):
     imga = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -23,8 +151,8 @@ def plotReceptiveField(image, layers, fmap):
 
     combined = cv2.addWeighted(imga, 1.0, mask, 1.0, 0)
 
-    cv2.imwrite('testa.png', imga)
-    cv2.imwrite('test.png', mask)
-    cv2.imwrite('test2.png', scaled)
-    cv2.imwrite('test3.png', combined)
+    #cv2.imwrite('testa.png', imga)
+    #cv2.imwrite('test.png', mask)
+    #cv2.imwrite('test2.png', scaled)
+    #cv2.imwrite('test3.png', combined)
     return combined, mask
