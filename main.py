@@ -12,6 +12,7 @@ from keras.preprocessing.image import load_img, img_to_array
 from tensorflow.keras import datasets, layers, models, backend
 import matplotlib.pyplot as plt
 import mlutil
+from plot import plotReceptiveField
 # numpy: height X width
 # cv2: width X height
 
@@ -290,16 +291,16 @@ matches = [x for x in wronganswers if x['correct'] == idx]
 
 imageindex = matches[0]['index']
 outs = debugmodel.predict(np.asarray([test_images[imageindex]]))
-l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0],
-      'kernel': debugmodel.layers[i + 1].kernel_size if 'conv2d' in debugmodel.layers[i + 1].name else debugmodel.layers[i + 1].pool_size,
-      'stride': debugmodel.layers[i + 1].strides} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
+l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
 
 ll = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if '2d' in l.name]
 ll.insert(0, {'kernel': debugmodel.layers[1].kernel_size, 'stride': debugmodel.layers[1].strides})
 
-
-fieldx, fieldy = mlutil.calcReceptiveField(3, 3, ll)
-
+o = l[0]['output'][:, :, 1]
+#o = l[-1]['output'][:, :, 0]
+#fieldx, fieldy = mlutil.calcReceptiveField(3, 3, ll)
+plotReceptiveField(orig_test_images[imageindex], [ll[0]], o)
+#plotReceptiveField(orig_test_images[imageindex], ll, o)
 
 collectImageSet(incorrect, test_labels, class_names)
 incorrectindex = incorrect[2]
