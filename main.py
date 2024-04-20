@@ -5,6 +5,7 @@ import numpy as np
 import math
 import ssl
 import cv2
+import pandas as pd
 import shutil
 import os
 from keras.preprocessing.image import load_img, img_to_array
@@ -12,6 +13,7 @@ from tensorflow.keras import datasets, layers, models, backend
 import matplotlib.pyplot as plt
 from mlutil import makeDebugModel, evalModel
 from plot import plotReceptiveField, renderSummary
+from patterns import generateDataset
 # numpy: height X width
 # cv2: width X height
 
@@ -64,6 +66,9 @@ def renderFilters(maps):
 
 
 
+rdf = pd.read_csv('test.csv', index_col=0)
+rdf.to_csv('test2.csv')
+
 ssl._create_default_https_context = ssl._create_unverified_context
 
 (orig_train_images, train_labels), (orig_test_images, test_labels) = datasets.cifar10.load_data()
@@ -89,11 +94,7 @@ print(backend.image_data_format())
 filters, bias = debugmodel.layers[1].get_weights()
 #renderFilters(filters)
 
-#ti = 0
-#outs = debugmodel.predict(np.asarray([test_images[ti]]))
-
-#l = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
-
+generateDataset(debugmodel, test_images, test_labels)
 
 correct, incorrect, wronganswers = evalModel(test_images, test_labels, model)
 
