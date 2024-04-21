@@ -65,6 +65,17 @@ def mineContrastPats(correct, incorrect):
     buffer = incorrect.values.tolist()
     incorrectpats = miner.fit_transform(buffer, return_tids=False)
     print(incorrectpats)
+    for index, row in incorrectpats.iterrows():
+        pat = row['itemset']
+        print(pat)
+        ismatch = False
+        for ci, cr in correctpats.iterrows():
+            if cr['itemset'] == pat:
+                ismatch = True
+                break
+        print('match:' + str(ismatch))
+        #match = correctpats.loc[correctpats['itemset'] == pat]
+        #print(1)
 
     print(1)
 
