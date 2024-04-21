@@ -13,7 +13,7 @@ from tensorflow.keras import datasets, layers, models, backend
 import matplotlib.pyplot as plt
 from mlutil import makeDebugModel, evalModel
 from plot import plotReceptiveField, renderSummary
-from patterns import generateDataset
+from patterns import generateDataset, transformDataset, mineContrastPats
 # numpy: height X width
 # cv2: width X height
 
@@ -66,8 +66,8 @@ def renderFilters(maps):
 
 
 
-rdf = pd.read_csv('test.csv', index_col=0)
-rdf.to_csv('test2.csv')
+
+
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -84,6 +84,16 @@ class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
 #    imgclass = class_names[test_labels[i][0]]
 #    cv2.imwrite('images/' + str(i).zfill(5) + ' - ' + imgclass + '.png', img)
 
+rdf = pd.read_csv('test.csv', index_col=0)
+#rdf.to_csv('test2.csv')
+di = class_names.index('dog')
+ci = class_names.index('cat')
+sel = rdf[rdf['label'].isin([di, ci])]
+
+trn = transformDataset(sel)
+correctset = trn[trn['iscorrect'] == 1]
+incorrectset = trn[trn['iscorrect'] == 0]
+mineContrastPats(correctset, incorrectset)
 
 
 model = models.load_model('testmodel.keras')
@@ -94,7 +104,8 @@ print(backend.image_data_format())
 filters, bias = debugmodel.layers[1].get_weights()
 #renderFilters(filters)
 
-generateDataset(debugmodel, test_images, test_labels)
+trans = generateDataset(debugmodel, test_images, test_labels)
+trans.to_csv('test.csv')
 
 correct, incorrect, wronganswers = evalModel(test_images, test_labels, model)
 

@@ -22,7 +22,8 @@ def generateDataset(model, images, labels):
         cols += [layers[i] + '_' + str(j) for j in range(ypreds[i].shape[3])]
         break
 
-    trans = pd.DataFrame(columns=cols + ['predicted', 'label', 'incorrect'])
+    #TODO: create as list first, then copy into dataframe
+    trans = pd.DataFrame(columns=cols + ['predicted', 'label', 'iscorrect'])
     for i in range(len(images)):
         layeractivations = []
         for l in range(len(layers)):
@@ -39,6 +40,33 @@ def generateDataset(model, images, labels):
     return trans
 
 
+def transformDataset(trans):
+    rows = []
+    for index, row in trans.iterrows():
+        newrow = [(c + 1) * 100 + row.iloc[c] for c in range(0, len(trans.columns) - 1)]
+        newrow.append(row['iscorrect'])
+        rows.append(newrow)
+    df = pd.DataFrame(rows, columns=trans.columns)
+    return df
+
+
+def mineContrastPats(correct, incorrect):
+    miner = LCM()
+    if 'iscorrect' in correct.columns:
+        correct = correct.drop('iscorrect', axis=1)
+    correct = correct.drop(correct.columns[[i for i in range(25)]], axis=1)
+    buffer = correct.values.tolist()
+    correctpats = miner.fit_transform(buffer, return_tids=False)
+    print(correctpats)
+
+    if 'iscorrect' in incorrect.columns:
+        incorrect = incorrect.drop('iscorrect', axis=1)
+    incorrect = incorrect.drop(incorrect.columns[[i for i in range(25)]], axis=1)
+    buffer = incorrect.values.tolist()
+    incorrectpats = miner.fit_transform(buffer, return_tids=False)
+    print(incorrectpats)
+
+    print(1)
 
 
 
@@ -102,5 +130,5 @@ y = pd.Series(
 
 ep = MBDLLBorder(min_supp=.6, min_growth_rate=1.6)
 patterns = ep.fit_discover(D, y, min_size=1)
-print(patterns)
+#print(patterns)
 
