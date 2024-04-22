@@ -5,9 +5,16 @@ import math
 import mlutil
 
 
-def renderFeatureMaps(maps):
+def renderFeatureMaps(mapinfo, pattern=None):
     fh = 30#maps.shape[0]
     fw = 30#maps.shape[1]
+    maps = mapinfo['output']
+    patitems = []
+    for item in pattern:
+        i = item.rfind('_')
+        layername = item[:i]
+        if layername == mapinfo['name']:
+            patitems.append(item)
     xmaps = 30
     numfilters = maps.shape[-1]
     ymaps = math.ceil(numfilters / xmaps)
@@ -20,10 +27,18 @@ def renderFeatureMaps(maps):
     for i in range(0, numfilters):
         filter = scaled[:, :, i]
         #r = np.rollaxis(filter, 1)  # swap HxW->WxH for cv2
-        (_, lh), _ = cv2.getTextSize(str(i), cv2.FONT_HERSHEY_PLAIN, 1, 1)
-        img = cv2.putText(img, str(i), (x, y + lh + 1), cv2.FONT_HERSHEY_PLAIN, 1, 0, 1)
+        if mapinfo['name'] + '_' + str(i) in patitems:
+            thickness = 2
+        else:
+            thickness = 1
+        (_, lh), _ = cv2.getTextSize(str(i), cv2.FONT_HERSHEY_PLAIN, 1, thickness)
+        img = cv2.putText(img, str(i), (x, y + lh + 1), cv2.FONT_HERSHEY_PLAIN, 1, 0, thickness)
         r = cv2.resize(filter, (fh, fw), interpolation=cv2.INTER_NEAREST_EXACT)
         img[y + lh + 2:y + r.shape[0] + lh + 2, x:x + r.shape[1]] = r
+
+        #if mapinfo['name'] + '_' + str(i) in patitems:
+        #    cv2.rectangle(img, (x, y), (x + r.shape[1], y + r.shape[0] + lh + 2), (0, 255, 0), 2)
+
         if (i + 1) % xmaps == 0:
             x = 1
             y += fh + lh + 2
@@ -104,8 +119,9 @@ def renderClassScores(classes, output):
     return canvas
 
 
-def renderSummary(image, title, label, maps, classes, output):
-    rmaps = [renderFeatureMaps(m['output']) for m in maps]
+def renderSummary(image, title, label, maps, classes, output, pattern=None):
+    rmaps = [renderFeatureMaps(m, pattern) for m in maps]
+    #rmaps = [renderFeatureMaps(m['output'], pattern) for m in maps]
     rclasses = renderClassScores(classes, output)
 
     (_, lh), _ = cv2.getTextSize('0', cv2.FONT_HERSHEY_PLAIN, 1, 1)

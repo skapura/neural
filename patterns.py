@@ -3,7 +3,20 @@ from skmine.itemsets.lcm import LCMMax
 from skmine.emerging import MBDLLBorder
 import numpy as np
 import pandas as pd
+import math
 
+
+def findMatches(df, pattern):
+    matches = []
+    for index, row in df.iterrows():
+        if pattern.issubset(set(row.values)):
+            matches.append(index)
+    return matches
+
+
+def pat2columns(pattern, columns):
+    tpat = [columns[math.floor(item / 100) - 1] for item in pattern]
+    return tpat
 
 
 def isActivated(fmap, threshold):
@@ -17,15 +30,14 @@ def generateDataset(model, images, labels):
     layers = [model.layers[i + 1].name for i in range(len(ypreds)) if '2d' in model.layers[i + 1].name]
     thresholds = [np.max(ypreds[i]) * 0.25 for i in range(len(layers))]
 
-    cols = []
+    cols = ['index']
     for i in range(len(layers)):
         cols += [layers[i] + '_' + str(j) for j in range(ypreds[i].shape[3])]
         break
 
-    #TODO: create as list first, then copy into dataframe
-    trans = pd.DataFrame(columns=cols + ['predicted', 'label', 'iscorrect'])
+    buffer = []
     for i in range(len(images)):
-        layeractivations = []
+        layeractivations = [i]
         for l in range(len(layers)):
             outs = ypreds[l][i]
             activations = []
@@ -34,19 +46,25 @@ def generateDataset(model, images, labels):
                 activations.append(int(isActivated(fmap, thresholds[l])))
             layeractivations += activations
             break
-        trans.loc[len(trans.index)] = layeractivations + [ymaxpreds[i], labels[i][0], int(eval[i])]
+        buffer.append(layeractivations + [ymaxpreds[i], labels[i][0], int(eval[i])])
+
+    trans = pd.DataFrame(buffer, columns=cols + ['predicted', 'label', 'iscorrect'])
+    trans.set_index('index', inplace=True)
 
     #trans.to_csv('test.csv')
     return trans
 
 
 def transformDataset(trans):
-    rows = []
+    buffer = []
     for index, row in trans.iterrows():
-        newrow = [(c + 1) * 100 + row.iloc[c] for c in range(0, len(trans.columns) - 1)]
+        newrow = [index]
+        newrow += [(c + 1) * 100 + row.iloc[c] for c in range(0, len(trans.columns) - 1)]
         newrow.append(row['iscorrect'])
-        rows.append(newrow)
-    df = pd.DataFrame(rows, columns=trans.columns)
+        buffer.append(newrow)
+    cols = [trans.index.name] + trans.columns.values.tolist()
+    df = pd.DataFrame(buffer, columns=cols)
+    df.set_index(trans.index.name, inplace=True)
     return df
 
 
@@ -54,30 +72,29 @@ def mineContrastPats(correct, incorrect):
     miner = LCM()
     if 'iscorrect' in correct.columns:
         correct = correct.drop('iscorrect', axis=1)
-    correct = correct.drop(correct.columns[[i for i in range(25)]], axis=1)
+    correct = correct.drop(correct.columns[[i for i in range(23)]], axis=1)
     buffer = correct.values.tolist()
     correctpats = miner.fit_transform(buffer, return_tids=False)
-    print(correctpats)
+    #print(correctpats)
 
     if 'iscorrect' in incorrect.columns:
         incorrect = incorrect.drop('iscorrect', axis=1)
-    incorrect = incorrect.drop(incorrect.columns[[i for i in range(25)]], axis=1)
+    incorrect = incorrect.drop(incorrect.columns[[i for i in range(23)]], axis=1)
     buffer = incorrect.values.tolist()
     incorrectpats = miner.fit_transform(buffer, return_tids=False)
-    print(incorrectpats)
+
+    contrastpats = []
     for index, row in incorrectpats.iterrows():
         pat = row['itemset']
-        print(pat)
         ismatch = False
         for ci, cr in correctpats.iterrows():
             if cr['itemset'] == pat:
                 ismatch = True
                 break
-        print('match:' + str(ismatch))
-        #match = correctpats.loc[correctpats['itemset'] == pat]
-        #print(1)
+        if not ismatch:
+            contrastpats.append({'pattern': set(row['itemset']), 'support': row['support']})
 
-    print(1)
+    return contrastpats
 
 
 

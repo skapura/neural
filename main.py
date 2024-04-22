@@ -13,7 +13,7 @@ from tensorflow.keras import datasets, layers, models, backend
 import matplotlib.pyplot as plt
 from mlutil import makeDebugModel, evalModel
 from plot import plotReceptiveField, renderSummary
-from patterns import generateDataset, transformDataset, mineContrastPats
+from patterns import generateDataset, transformDataset, mineContrastPats, findMatches, pat2columns
 # numpy: height X width
 # cv2: width X height
 
@@ -85,16 +85,30 @@ class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
 #    cv2.imwrite('images/' + str(i).zfill(5) + ' - ' + imgclass + '.png', img)
 
 rdf = pd.read_csv('test.csv', index_col=0)
+#print(rdf.head())
 #rdf.to_csv('test2.csv')
 di = class_names.index('dog')
 ci = class_names.index('cat')
 sel = rdf[rdf['label'].isin([di, ci])]
+sel = rdf[rdf['predicted'].isin([di, ci])]
+sel = sel.drop(['label', 'predicted'], axis=1)
 
 trn = transformDataset(sel)
 correctset = trn[trn['iscorrect'] == 1]
 incorrectset = trn[trn['iscorrect'] == 0]
-mineContrastPats(correctset, incorrectset)
+contrastpats = mineContrastPats(correctset, incorrectset)
+print(contrastpats)
 
+matches = findMatches(trn, contrastpats[0]['pattern'])
+imageindex = matches[0]
+tpat = pat2columns(contrastpats[0]['pattern'], trn.columns.values)
+model = models.load_model('testmodel.keras')
+debugmodel = makeDebugModel(model)
+outs = debugmodel.predict(np.asarray([test_images[imageindex]]))
+layeroutputs = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
+
+summary = renderSummary(orig_test_images[imageindex], str(imageindex), class_names[test_labels[imageindex][0]], layeroutputs, class_names, outs[-1][0], tpat)
+cv2.imwrite('summary.png', summary)
 
 model = models.load_model('testmodel.keras')
 print(model.summary())
@@ -158,10 +172,10 @@ layerinfo = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 's
 layerinfo.insert(0, {'kernel': debugmodel.layers[1].kernel_size, 'stride': debugmodel.layers[1].strides})
 
 #o = l[0]['output'][:, :, 1]
-o = layeroutputs[-1]['output'][:, :, 0]
+#o = layeroutputs[-1]['output'][:, :, 0]
 #fieldx, fieldy = mlutil.calcReceptiveField(3, 3, ll)
 #plotReceptiveField(orig_test_images[imageindex], [ll[0]], o)
-plotReceptiveField(orig_test_images[imageindex], layerinfo, o)
+#plotReceptiveField(orig_test_images[imageindex], layerinfo, o)
 
 renderSummary(orig_test_images[imageindex], str(imageindex), class_names[test_labels[imageindex][0]], layeroutputs, class_names, outs[-1][0])
 
