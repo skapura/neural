@@ -4,7 +4,10 @@ from skmine.emerging import MBDLLBorder
 import numpy as np
 import pandas as pd
 import math
+from mlxtend.frequent_patterns import fpgrowth
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 def findMatches(df, pattern):
     matches = []
@@ -72,15 +75,49 @@ def mineContrastPats(correct, incorrect):
     miner = LCM()
     if 'iscorrect' in correct.columns:
         correct = correct.drop('iscorrect', axis=1)
-    correct = correct.drop(correct.columns[[i for i in range(23)]], axis=1)
-    buffer = correct.values.tolist()
+    #correct = correct.drop(correct.columns[[i for i in range(23)]], axis=1)
+    #buffer = correct.values.tolist()
+    #filtered = []
+    #for trn in buffer:
+    #    t = []
+    #    for b in trn:
+    #        col = math.floor(b / 100) * 100
+    #        if b - col > 0:
+    #            t.append(b)
+    #    filtered.append(t)
+    #buffer = filtered
+    buffer = []
+    for index, row in correct.iterrows():
+        b = []
+        for r in row:
+            col = math.floor(r / 100) * 100
+            b.append(r - col > 0)
+            buffer.append(b)
+    binaryset = pd.DataFrame(buffer, columns=correct.columns)
+
+    results = []
+    res = fpgrowth(binaryset, min_support=0.25, use_colnames=True)
+    print(res.head(100))
+    #for itemset, support in find_frequent_itemsets(buffer, 500):
+    #    results.append(itemset)
+
     correctpats = miner.fit_transform(buffer, return_tids=False)
     #print(correctpats)
 
     if 'iscorrect' in incorrect.columns:
         incorrect = incorrect.drop('iscorrect', axis=1)
-    incorrect = incorrect.drop(incorrect.columns[[i for i in range(23)]], axis=1)
+    #incorrect = incorrect.drop(incorrect.columns[[i for i in range(23)]], axis=1)
     buffer = incorrect.values.tolist()
+    filtered = []
+    for trn in buffer:
+        t = []
+        for b in trn:
+            col = math.floor(b / 100) * 100
+            if b - col > 0:
+                t.append(b)
+        filtered.append(t)
+    buffer = filtered
+
     incorrectpats = miner.fit_transform(buffer, return_tids=False)
 
     contrastpats = []
