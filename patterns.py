@@ -4,10 +4,10 @@ from skmine.emerging import MBDLLBorder
 import numpy as np
 import pandas as pd
 import math
-from mlxtend.frequent_patterns import fpgrowth
-
+from mlxtend.frequent_patterns import fpgrowth, fpmax
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 
 def findMatches(df, pattern):
     matches = []
@@ -76,16 +76,6 @@ def mineContrastPats(correct, incorrect):
     if 'iscorrect' in correct.columns:
         correct = correct.drop('iscorrect', axis=1)
     #correct = correct.drop(correct.columns[[i for i in range(23)]], axis=1)
-    #buffer = correct.values.tolist()
-    #filtered = []
-    #for trn in buffer:
-    #    t = []
-    #    for b in trn:
-    #        col = math.floor(b / 100) * 100
-    #        if b - col > 0:
-    #            t.append(b)
-    #    filtered.append(t)
-    #buffer = filtered
     buffer = []
     for index, row in correct.iterrows():
         b = []
@@ -94,42 +84,45 @@ def mineContrastPats(correct, incorrect):
             b.append(r - col > 0)
             buffer.append(b)
     binaryset = pd.DataFrame(buffer, columns=correct.columns)
+    correctpats = fpmax(binaryset, min_support=0.50, use_colnames=True)
+    print(correctpats.head(100))
 
-    results = []
-    res = fpgrowth(binaryset, min_support=0.25, use_colnames=True)
-    print(res.head(100))
-    #for itemset, support in find_frequent_itemsets(buffer, 500):
-    #    results.append(itemset)
-
-    correctpats = miner.fit_transform(buffer, return_tids=False)
+    #correctpats = miner.fit_transform(buffer, return_tids=False)
     #print(correctpats)
 
     if 'iscorrect' in incorrect.columns:
         incorrect = incorrect.drop('iscorrect', axis=1)
     #incorrect = incorrect.drop(incorrect.columns[[i for i in range(23)]], axis=1)
-    buffer = incorrect.values.tolist()
-    filtered = []
-    for trn in buffer:
-        t = []
-        for b in trn:
-            col = math.floor(b / 100) * 100
-            if b - col > 0:
-                t.append(b)
-        filtered.append(t)
-    buffer = filtered
+    buffer = []
+    for index, row in incorrect.iterrows():
+        b = []
+        for r in row:
+            col = math.floor(r / 100) * 100
+            b.append(r - col > 0)
+            buffer.append(b)
+    binaryset = pd.DataFrame(buffer, columns=incorrect.columns)
+    incorrectpats = fpmax(binaryset, min_support=0.8, use_colnames=True)
+    print(incorrectpats.head(100))
 
-    incorrectpats = miner.fit_transform(buffer, return_tids=False)
+    #incorrectpats = miner.fit_transform(buffer, return_tids=False)
 
     contrastpats = []
     for index, row in incorrectpats.iterrows():
-        pat = row['itemset']
+        pat = row['itemsets']
+        print('checking:' + str(pat))
         ismatch = False
+        correctsup = 0.0
         for ci, cr in correctpats.iterrows():
-            if cr['itemset'] == pat:
+            if cr['itemsets'] == pat:
                 ismatch = True
+                correctsup = cr['support']
+                print('correct:' + str(cr['support']) + ', incorrect:' + str(row['support']))
                 break
         if not ismatch:
-            contrastpats.append({'pattern': set(row['itemset']), 'support': row['support']})
+            contrastpats.append({'pattern': set(row['itemsets']), 'correctsupport': correctsup, 'incorrectsupport': row['support']})
+
+    for c in contrastpats:
+        print(c)
 
     return contrastpats
 
