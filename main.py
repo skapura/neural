@@ -65,8 +65,49 @@ def renderFilters(maps):
     cv2.imwrite('filters.png', img)
 
 
+def processDatafile():
+    rdf = pd.read_csv('test.csv', index_col=0)
+    # print(rdf.head())
+    # rdf.to_csv('test2.csv')
+    di = class_names.index('dog')
+    ci = class_names.index('cat')
+    sel = rdf[rdf['label'].isin([di, ci])]
+    sel = rdf[rdf['predicted'].isin([di, ci])]
+    sel = sel.drop(['label', 'predicted'], axis=1)
+
+    # trn = transformDataset(sel)
+    trn = sel
+    correctset = trn[trn['iscorrect'] == 1]
+    incorrectset = trn[trn['iscorrect'] == 0]
+    contrastpats = mineContrastPats(correctset, incorrectset)
+    p = contrastpats[0]
+    findMatches(p['pattern'], trn)
+    print(contrastpats)
+
+    matches = findMatches(trn, contrastpats[0]['pattern'])
+    imageindex = matches[0]
+    tpat = pat2columns(contrastpats[0]['pattern'], trn.columns.values)
+    model = models.load_model('testmodel.keras')
+    debugmodel = makeDebugModel(model)
+    outs = debugmodel.predict(np.asarray([test_images[imageindex]]))
+    layeroutputs = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if
+                    '2d' in debugmodel.layers[i + 1].name]
+
+    summary = renderSummary(orig_test_images[imageindex], str(imageindex), class_names[test_labels[imageindex][0]],
+                            layeroutputs, class_names, outs[-1][0], tpat)
+    cv2.imwrite('summary.png', summary)
 
 
+
+def evalModel(test_images, test_labels):
+    model = models.load_model('testmodel.keras')
+    print(model.summary())
+
+    debugmodel = makeDebugModel(model)
+    print(backend.image_data_format())
+
+    trans = generateDataset(debugmodel, test_images, test_labels)
+    trans.to_csv('test.csv')
 
 
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -84,42 +125,9 @@ class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
 #    imgclass = class_names[test_labels[i][0]]
 #    cv2.imwrite('images/' + str(i).zfill(5) + ' - ' + imgclass + '.png', img)
 
-rdf = pd.read_csv('test.csv', index_col=0)
-#print(rdf.head())
-#rdf.to_csv('test2.csv')
-di = class_names.index('dog')
-ci = class_names.index('cat')
-sel = rdf[rdf['label'].isin([di, ci])]
-sel = rdf[rdf['predicted'].isin([di, ci])]
-sel = sel.drop(['label', 'predicted'], axis=1)
+#processDatafile()
 
-trn = transformDataset(sel)
-correctset = trn[trn['iscorrect'] == 1]
-incorrectset = trn[trn['iscorrect'] == 0]
-contrastpats = mineContrastPats(correctset, incorrectset)
-print(contrastpats)
-
-matches = findMatches(trn, contrastpats[0]['pattern'])
-imageindex = matches[0]
-tpat = pat2columns(contrastpats[0]['pattern'], trn.columns.values)
-model = models.load_model('testmodel.keras')
-debugmodel = makeDebugModel(model)
-outs = debugmodel.predict(np.asarray([test_images[imageindex]]))
-layeroutputs = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
-
-summary = renderSummary(orig_test_images[imageindex], str(imageindex), class_names[test_labels[imageindex][0]], layeroutputs, class_names, outs[-1][0], tpat)
-cv2.imwrite('summary.png', summary)
-
-model = models.load_model('testmodel.keras')
-print(model.summary())
-
-debugmodel = makeDebugModel(model)
-print(backend.image_data_format())
-filters, bias = debugmodel.layers[1].get_weights()
-#renderFilters(filters)
-
-trans = generateDataset(debugmodel, test_images, test_labels)
-trans.to_csv('test.csv')
+evalModel(test_images, test_labels)
 
 correct, incorrect, wronganswers = evalModel(test_images, test_labels, model)
 
