@@ -57,8 +57,8 @@ def cutPoints(fmaps, iscorrect):
     d2size = 0
     for tp in testpoints:
         cutpoint = tvals[tp]
-        d1 = [v for v in vals if v[0] < cutpoint]
-        d2 = [v for v in vals if v[0] >= cutpoint]
+        d1 = [v for v in vals if v[0] <= cutpoint]
+        d2 = [v for v in vals if v[0] > cutpoint]
         e1 = entropy(d1)
         e2 = entropy(d2)
         info = (len(d1) / len(vals)) * e1 + (len(d2) / len(vals)) * e2
@@ -70,6 +70,20 @@ def cutPoints(fmaps, iscorrect):
     cutpoints.append(mincut)
     print('best info:' + str(mininfo) + ', cutpoint:' + str(mincut) + ', d1:' + str(d1size) + ', d2:' + str(d2size))
     return cutpoints
+
+
+def discretize(fmaps, cutpoints):
+    fbinned = []
+    for f in fmaps:
+        found = False
+        for ci in range(len(cutpoints)):
+            if f <= cutpoints[ci]:
+                fbinned.append(ci)
+                found = True
+                break
+        if not found:
+            fbinned.append(len(cutpoints))
+    return fbinned
 
 
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -96,6 +110,7 @@ convouts = [o for o in outs if len(o.shape) == 4]   # get only CNN layers
 colnames, activations = featureActivations(convouts, layernames)
 
 cuts = [cutPoints(a, iscorrect) for a in activations]
+discretize(activations[0], cuts[0])
 
 model = models.Sequential()
 model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)))
