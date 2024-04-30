@@ -9,6 +9,7 @@ import random
 from itertools import compress
 import warnings
 import spmf
+import csv
 from mlxtend.frequent_patterns import fpgrowth, fpmax
 from mlutil import makeDebugModel
 
@@ -175,41 +176,62 @@ def mineContrastPatterns(correct, incorrect):
         itemset = frozenset(compress(correct.columns, row))
         correctsets.append(itemset)
 
-    spmf()
+    lookup = {}
+    for i in range(len(incorrect.columns)):
+        lookup[incorrect.columns[i]] = i
+    with open('.trans.csv', 'w') as outfile:
+        writer = csv.writer(outfile, delimiter=' ')
+        for index, row in incorrect.iterrows():
+            itemset = [lookup[item] for item in list(compress(incorrect.columns, row))]
+            writer.writerow(itemset)
 
-    pats = fpgrowth(incorrect, min_support=0.8, use_colnames=True, max_len=5, verbose=1)
-    #pats = fpmax(incorrect, min_support=0.1, use_colnames=True)
-    print('done mining:' + str(len(pats)))
+    fpclose = spmf.Spmf('FPClose', input_filename='.trans.csv', output_filename='output.txt', arguments=[0.8])
+    fpclose.run()
+    fpclose.parse_output()
+    patlist = []
+    for p in fpclose.patterns_:
+        items = p[0].split()
+        pat = frozenset([incorrect.columns[int(itm)] for itm in items[:-2]])
+        sup = int(items[-1]) / float(len(incorrect))
+        patlist.append({'pattern': pat, 'incorrectsupport': sup})
+
+
+    #pats = fpgrowth(incorrect, min_support=0.8, use_colnames=True, max_len=5, verbose=1)
+    ##pats = fpmax(incorrect, min_support=0.1, use_colnames=True)
+    #print('done mining:' + str(len(pats)))
 
     # Select closed patterns
-    doclosed = True
-    su = pats.support.unique()  # all unique support count
-    # Dictionay storing itemset with same support count key
-    fredic = {}
-    for i in range(len(su)):
-        inset = list(pats.loc[pats.support == su[i]]['itemsets'])
-        fredic[su[i]] = inset
-    patlist = []
-    for index, row in pats.iterrows():
-        print(str(index) + '/' + str(len(pats)))
-        isclose = True
-        cli = row['itemsets']
-        cls = row['support']
-        if doclosed:
-            checkset = fredic[cls]
-            for i in checkset:
-                if cli != i:
-                    if frozenset.issubset(cli, i):
-                        isclose = False
-                        break
-            if (isclose):
-                patlist.append({'pattern': row['itemsets'], 'incorrectsupport': cls})
-        else:
-            patlist.append({'pattern': row['itemsets'], 'incorrectsupport': cls})
+    #doclosed = True
+    #su = pats.support.unique()  # all unique support count
+    ## Dictionay storing itemset with same support count key
+    #fredic = {}
+    #for i in range(len(su)):
+    #    inset = list(pats.loc[pats.support == su[i]]['itemsets'])
+    #    fredic[su[i]] = inset
+    #patlist = []
+    #for index, row in pats.iterrows():
+    #    print(str(index) + '/' + str(len(pats)))
+    #    isclose = True
+    #    cli = row['itemsets']
+    #    cls = row['support']
+    #    if doclosed:
+    #        checkset = fredic[cls]
+    #        for i in checkset:
+    #            if cli != i:
+    #                if frozenset.issubset(cli, i):
+    #                    isclose = False
+    #                    break
+    #        if (isclose):
+    #            patlist.append({'pattern': row['itemsets'], 'incorrectsupport': cls})
+    #    else:
+    #        patlist.append({'pattern': row['itemsets'], 'incorrectsupport': cls})
 
-    print('closed:' + str(len(patlist)))
+    #print('closed:' + str(len(patlist)))
 
+    i = 0
     for p in patlist:
+        print(i)
+        i += 1
         count = 0
         for c in correctsets:
             if p['pattern'].issubset(c):
