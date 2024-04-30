@@ -176,6 +176,13 @@ def mineContrastPatterns(correct, incorrect):
         itemset = frozenset(compress(correct.columns, row))
         correctsets.append(itemset)
 
+    dups = []
+    for c in incorrect.columns:
+        vals = incorrect[c].to_numpy()
+        if (vals[0] == vals).all():
+            dups.append(c)
+    incorrect.drop(dups, axis=1, inplace=True)
+
     lookup = {}
     for i in range(len(incorrect.columns)):
         lookup[incorrect.columns[i]] = i
@@ -185,7 +192,7 @@ def mineContrastPatterns(correct, incorrect):
             itemset = [lookup[item] for item in list(compress(incorrect.columns, row))]
             writer.writerow(itemset)
 
-    fpclose = spmf.Spmf('FPClose', input_filename='.trans.csv', output_filename='output.txt', arguments=[0.8])
+    fpclose = spmf.Spmf('FPClose', input_filename='.trans.csv', output_filename='.patterns.csv', arguments=[0.8, 5])
     fpclose.run()
     fpclose.parse_output()
     patlist = []
@@ -194,39 +201,7 @@ def mineContrastPatterns(correct, incorrect):
         pat = frozenset([incorrect.columns[int(itm)] for itm in items[:-2]])
         sup = int(items[-1]) / float(len(incorrect))
         patlist.append({'pattern': pat, 'incorrectsupport': sup})
-
-
-    #pats = fpgrowth(incorrect, min_support=0.8, use_colnames=True, max_len=5, verbose=1)
-    ##pats = fpmax(incorrect, min_support=0.1, use_colnames=True)
-    #print('done mining:' + str(len(pats)))
-
-    # Select closed patterns
-    #doclosed = True
-    #su = pats.support.unique()  # all unique support count
-    ## Dictionay storing itemset with same support count key
-    #fredic = {}
-    #for i in range(len(su)):
-    #    inset = list(pats.loc[pats.support == su[i]]['itemsets'])
-    #    fredic[su[i]] = inset
-    #patlist = []
-    #for index, row in pats.iterrows():
-    #    print(str(index) + '/' + str(len(pats)))
-    #    isclose = True
-    #    cli = row['itemsets']
-    #    cls = row['support']
-    #    if doclosed:
-    #        checkset = fredic[cls]
-    #        for i in checkset:
-    #            if cli != i:
-    #                if frozenset.issubset(cli, i):
-    #                    isclose = False
-    #                    break
-    #        if (isclose):
-    #            patlist.append({'pattern': row['itemsets'], 'incorrectsupport': cls})
-    #    else:
-    #        patlist.append({'pattern': row['itemsets'], 'incorrectsupport': cls})
-
-    #print('closed:' + str(len(patlist)))
+    print(len(patlist))
 
     i = 0
     for p in patlist:
@@ -242,8 +217,8 @@ def mineContrastPatterns(correct, incorrect):
 
     patlist.sort(key=lambda x: x['incorrectsupport'] - x['correctsupport'])
     for p in patlist:
-        if p['supportdiff'] > 0.05:
-            print(p)
+        #if p['supportdiff'] > 0.05:
+        print(p)
     print(1)
 
 
@@ -271,7 +246,8 @@ sel = df[df['label'].isin([di, ci])]
 sel = df[df['predicted'].isin([di, ci])]
 sel.drop(['label', 'predicted'], axis=1, inplace=True)
 #cols = sel.columns[32:-1]   #32-63
-cols = [sel.columns[i] for i in range(len(sel.columns)) if 'conv2d_2_' in sel.columns[i]]
+cols = [sel.columns[i] for i in range(len(sel.columns)) if 'conv2d_1_' in sel.columns[i] or 'conv2d_2_' in sel.columns[i]]
+#cols = sel.columns[:32]
 #cols = cols[:30]
 cols = [c for c in sel.columns if c not in cols and c != 'iscorrect']
 sel.drop(cols, axis=1, inplace=True)
