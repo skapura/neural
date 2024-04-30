@@ -4,7 +4,12 @@ from tensorflow.keras import datasets, layers, models, backend
 import tensorflow as tf
 import ssl
 import numpy as np
+import pandas as pd
 import random
+from itertools import compress
+import warnings
+import spmf
+from mlxtend.frequent_patterns import fpgrowth, fpmax
 from mlutil import makeDebugModel
 
 
@@ -46,7 +51,7 @@ def entropy(ds):
     return ent
 
 
-def cutPoints(fmaps, iscorrect):
+def cutPoints2(fmaps, iscorrect):
     cutpoints = []
     vals = list(zip(fmaps, iscorrect))
     tvals = np.unique(fmaps)
@@ -72,6 +77,33 @@ def cutPoints(fmaps, iscorrect):
     return cutpoints
 
 
+def cutPoints(fmaps, iscorrect):
+    cutpoints = []
+    vals = list(zip(fmaps, iscorrect))
+    tvals = np.unique(fmaps)
+    testpoints = random.sample(range(len(tvals)), min(100, len(tvals)))
+    samplevals = [vals[i] for i in random.sample(range(len(vals)), min(1000, len(vals)))]
+    mincut = -1
+    mininfo = 99999
+    d1size = 0
+    d2size = 0
+    for tp in testpoints:
+        cutpoint = tvals[tp]
+        d1 = [v for v in samplevals if v[0] <= cutpoint]
+        d2 = [v for v in samplevals if v[0] > cutpoint]
+        e1 = entropy(d1)
+        e2 = entropy(d2)
+        info = (len(d1) / len(samplevals)) * e1 + (len(d2) / len(samplevals)) * e2
+        if info <= mininfo:
+            mincut = cutpoint
+            mininfo = info
+            d1size = len(d1)
+            d2size = len(d2)
+    cutpoints.append(mincut)
+    print('best info:' + str(mininfo) + ', cutpoint:' + str(mincut) + ', d1:' + str(d1size) + ', d2:' + str(d2size))
+    return cutpoints
+
+
 def discretize(fmaps, cutpoints):
     fbinned = []
     for f in fmaps:
@@ -86,7 +118,116 @@ def discretize(fmaps, cutpoints):
     return fbinned
 
 
+def binarize(df):
+    cuts = [[1] for i in range(len(df.columns) - 1)]
+
+    # Get binary column names
+    bincols = []
+    for ci in range(len(df.columns) - 1):
+        for i in range(len(cuts[ci]) + 1):
+            bincols.append(df.columns[ci] + '_' + str(i))
+    bincols.append('iscorrect')
+
+    # Binarize data
+    brows = []
+    for index, row in df.iterrows():
+        rowbuf = []
+        for ci in range(len(df.columns) - 1):
+            v = row.iloc[ci]
+            for i in range(len(cuts[ci]) + 1):
+                rowbuf.append(v == i)
+        rowbuf.append(row['iscorrect'] == 1)
+        brows.append(rowbuf)
+
+    bdf = pd.DataFrame(brows, columns=bincols)
+    bdf.index.name = 'index'
+    return bdf
+
+
+def evalModel(debugmodel):
+    layernames = layerNames(debugmodel)
+    outs = debugmodel.predict(test_images)
+    ymaxpreds = [np.argmax(x) for x in outs[-1]]
+    labels = [l[0] for l in test_labels]
+    iscorrect = [ymaxpreds[i] == labels[i] for i in range(len(labels))]
+    labelinfo = list(zip(ymaxpreds, labels, iscorrect))
+    convouts = [o for o in outs if len(o.shape) == 4]  # get only CNN layers
+    colnames, activations = featureActivations(convouts, layernames)
+
+    cuts = [cutPoints(a, iscorrect) for a in activations]
+    binned = [discretize(activations[i], cuts[i]) for i in range(len(activations))]
+    d = {}
+    for i in range(len(colnames)):
+        d[colnames[i]] = binned[i]
+    d['label'] = labels
+    d['predicted'] = ymaxpreds
+    d['iscorrect'] = [1 if c else 0 for c in iscorrect]
+    df = pd.DataFrame(d)
+    df.index.name = 'index'
+    df.to_csv('test.csv')
+
+
+def mineContrastPatterns(correct, incorrect):
+    print('mine')
+
+    correctsets = []
+    for index, row in correct.iterrows():
+        itemset = frozenset(compress(correct.columns, row))
+        correctsets.append(itemset)
+
+    spmf()
+
+    pats = fpgrowth(incorrect, min_support=0.8, use_colnames=True, max_len=5, verbose=1)
+    #pats = fpmax(incorrect, min_support=0.1, use_colnames=True)
+    print('done mining:' + str(len(pats)))
+
+    # Select closed patterns
+    doclosed = True
+    su = pats.support.unique()  # all unique support count
+    # Dictionay storing itemset with same support count key
+    fredic = {}
+    for i in range(len(su)):
+        inset = list(pats.loc[pats.support == su[i]]['itemsets'])
+        fredic[su[i]] = inset
+    patlist = []
+    for index, row in pats.iterrows():
+        print(str(index) + '/' + str(len(pats)))
+        isclose = True
+        cli = row['itemsets']
+        cls = row['support']
+        if doclosed:
+            checkset = fredic[cls]
+            for i in checkset:
+                if cli != i:
+                    if frozenset.issubset(cli, i):
+                        isclose = False
+                        break
+            if (isclose):
+                patlist.append({'pattern': row['itemsets'], 'incorrectsupport': cls})
+        else:
+            patlist.append({'pattern': row['itemsets'], 'incorrectsupport': cls})
+
+    print('closed:' + str(len(patlist)))
+
+    for p in patlist:
+        count = 0
+        for c in correctsets:
+            if p['pattern'].issubset(c):
+                count += 1
+        p['correctsupport'] = count / float(len(correctsets))
+        p['supportdiff'] = p['incorrectsupport'] - p['correctsupport']
+        p['supportratio'] = p['incorrectsupport'] / p['correctsupport']
+
+    patlist.sort(key=lambda x: x['incorrectsupport'] - x['correctsupport'])
+    for p in patlist:
+        if p['supportdiff'] > 0.05:
+            print(p)
+    print(1)
+
+
 ssl._create_default_https_context = ssl._create_unverified_context
+pd.options.mode.chained_assignment = None
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 (orig_train_images, train_labels), (orig_test_images, test_labels) = datasets.cifar10.load_data()
 
@@ -100,17 +241,24 @@ model = models.load_model('testmodel_softmax.keras')
 print(model.summary())
 
 debugmodel = makeDebugModel(model)
-layernames = layerNames(debugmodel)
-outs = debugmodel.predict(test_images)
-ymaxpreds = [np.argmax(x) for x in outs[-1]]
-labels = [l[0] for l in test_labels]
-iscorrect = [ymaxpreds[i] == labels[i] for i in range(len(labels))]
-labelinfo = list(zip(ymaxpreds, labels, iscorrect))
-convouts = [o for o in outs if len(o.shape) == 4]   # get only CNN layers
-colnames, activations = featureActivations(convouts, layernames)
-
-cuts = [cutPoints(a, iscorrect) for a in activations]
-discretize(activations[0], cuts[0])
+#evalModel(debugmodel)
+df = pd.read_csv('test.csv', index_col=0)
+di = class_names.index('dog')
+ci = class_names.index('cat')
+sel = df[df['label'].isin([di, ci])]
+sel = df[df['predicted'].isin([di, ci])]
+sel.drop(['label', 'predicted'], axis=1, inplace=True)
+#cols = sel.columns[32:-1]   #32-63
+cols = [sel.columns[i] for i in range(len(sel.columns)) if 'conv2d_2_' in sel.columns[i]]
+#cols = cols[:30]
+cols = [c for c in sel.columns if c not in cols and c != 'iscorrect']
+sel.drop(cols, axis=1, inplace=True)
+bds = binarize(sel)
+correct = bds[bds['iscorrect']]
+incorrect = bds[~bds['iscorrect']]
+correct.drop('iscorrect', axis=1, inplace=True)
+incorrect.drop('iscorrect', axis=1, inplace=True)
+mineContrastPatterns(correct, incorrect)
 
 model = models.Sequential()
 model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)))
