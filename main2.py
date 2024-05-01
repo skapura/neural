@@ -6,12 +6,13 @@ import ssl
 import numpy as np
 import pandas as pd
 import random
+import cv2
 from itertools import compress
 import warnings
 import spmf
 import csv
 from mlxtend.frequent_patterns import fpgrowth, fpmax
-from mlutil import makeDebugModel
+from mlutil import makeDebugModel, calcReceptiveField, calcReceptiveField2
 
 
 def featureMapActivation(fmap):
@@ -28,7 +29,7 @@ def featureActivations(outs, layernames):
         numimages = outs[oi].shape[0]
         numfmaps = outs[oi].shape[-1]
         for fi in range(numfmaps):
-            colnames.append(layernames[oi] + '_' + str(fi))
+            colnames.append(layernames[oi] + '-' + str(fi))
             fmaps = [featureMapActivation(layer[i, :, :, fi]) for i in range(numimages)]
             activations.append(fmaps)
 
@@ -123,7 +124,7 @@ def binarize(df):
     cuts = [[1] for i in range(len(df.columns) - 1)]
 
     # Get binary column names
-    bincols = []
+    bincols = ['index']
     for ci in range(len(df.columns) - 1):
         for i in range(len(cuts[ci]) + 1):
             bincols.append(df.columns[ci] + '_' + str(i))
@@ -132,7 +133,7 @@ def binarize(df):
     # Binarize data
     brows = []
     for index, row in df.iterrows():
-        rowbuf = []
+        rowbuf = [index]
         for ci in range(len(df.columns) - 1):
             v = row.iloc[ci]
             for i in range(len(cuts[ci]) + 1):
@@ -141,7 +142,8 @@ def binarize(df):
         brows.append(rowbuf)
 
     bdf = pd.DataFrame(brows, columns=bincols)
-    bdf.index.name = 'index'
+    bdf.set_index('index', inplace=True)
+    #bdf.index.name = 'index'
     return bdf
 
 
@@ -168,13 +170,25 @@ def evalModel(debugmodel):
     df.to_csv('test.csv')
 
 
+def findMatches(ds, pattern):
+    matches = []
+    for index, row in ds.iterrows():
+        print(index)
+    return matches
+
+
 def mineContrastPatterns(correct, incorrect):
     print('mine')
 
     correctsets = []
     for index, row in correct.iterrows():
         itemset = frozenset(compress(correct.columns, row))
-        correctsets.append(itemset)
+        correctsets.append({'index': index, 'itemset': itemset})
+
+    incorrectsets = []
+    for index, row in incorrect.iterrows():
+        itemset = frozenset(compress(incorrect.columns, row))
+        incorrectsets.append({'index': index, 'itemset': itemset})
 
     dups = []
     for c in incorrect.columns:
@@ -200,26 +214,57 @@ def mineContrastPatterns(correct, incorrect):
         items = p[0].split()
         pat = frozenset([incorrect.columns[int(itm)] for itm in items[:-2]])
         sup = int(items[-1]) / float(len(incorrect))
-        patlist.append({'pattern': pat, 'incorrectsupport': sup})
-    print(len(patlist))
+        patlist.append({'pattern': pat, 'incorrectsupport': sup, 'correctmatches': [], 'incorrectmatches': []})
 
     i = 0
     for p in patlist:
-        print(i)
+        print(str(i) + '/' + str(len(patlist)))
         i += 1
         count = 0
         for c in correctsets:
-            if p['pattern'].issubset(c):
+            if p['pattern'].issubset(c['itemset']):
+                p['correctmatches'].append(c['index'])
                 count += 1
+        for c in incorrectsets:
+            if p['pattern'].issubset(c['itemset']):
+                p['incorrectmatches'].append(c['index'])
+
         p['correctsupport'] = count / float(len(correctsets))
         p['supportdiff'] = p['incorrectsupport'] - p['correctsupport']
         p['supportratio'] = p['incorrectsupport'] / p['correctsupport']
 
     patlist.sort(key=lambda x: x['incorrectsupport'] - x['correctsupport'])
-    for p in patlist:
-        #if p['supportdiff'] > 0.05:
-        print(p)
-    print(1)
+    #for p in patlist:
+    #    #if p['supportdiff'] > 0.05:
+    #    print(p)
+    return patlist
+
+
+def plotReceptiveField(image, layers, fmap):
+    imga = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    fmin = np.min(fmap)
+    fmax = np.max(fmap)
+    scaled = (((fmap - fmin) / (fmax - fmin)) * 255).astype(np.uint8)
+    mask = np.zeros((image.shape[0], image.shape[1], 3), np.uint8)
+
+    # Create receptive field mask
+    for y in range(scaled.shape[0]):
+        for x in range(scaled.shape[1]):
+            v = scaled[y, x]
+            xfield, yfield = calcReceptiveField(x, y, layers)
+            for xf in range(xfield[0], xfield[1] + 1):
+                for yf in range(yfield[0], yfield[1] + 1):
+                    if v > 0:
+                        mask[yf, xf] = (0, 0, max(v, mask[yf, xf, 1]))
+
+    combined = cv2.addWeighted(imga, 1.0, mask, 1.0, 0)
+
+    cv2.imwrite('test_img.png', imga)
+    cv2.imwrite('test_mask.png', mask)
+    #cv2.imwrite('test2.png', scaled)
+    cv2.imwrite('test_combined.png', combined)
+    return combined, mask
 
 
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -238,25 +283,88 @@ model = models.load_model('testmodel_softmax.keras')
 print(model.summary())
 
 debugmodel = makeDebugModel(model)
+
+#m = 33
+#outs = debugmodel.predict(np.asarray([test_images[m]]))
+#layeroutputs = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
+#layerinfo = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if '2d' in l.name]
+#layerinfo.insert(0, {'kernel': debugmodel.layers[1].kernel_size, 'stride': debugmodel.layers[1].strides})
+
+# first
+#o = layeroutputs[0]['output'][:, :, 5]
+#plotReceptiveField(orig_test_images[m], [layerinfo[0]], o)
+
+# second
+#o = layeroutputs[1]['output'][:, :, 5]
+#plotReceptiveField(orig_test_images[m], [layerinfo[0], layerinfo[1]], o)
+
+# third
+#o = layeroutputs[2]['output'][:, :, 5]
+#plotReceptiveField(orig_test_images[m], [layerinfo[0], layerinfo[1], layerinfo[2]], o)
+
+# fourth
+#o = layeroutputs[3]['output'][:, :, 5]
+#plotReceptiveField(orig_test_images[m], [layerinfo[0], layerinfo[1], layerinfo[2], layerinfo[3]], o)
+
+# fifth
+#o = layeroutputs[4]['output'][:, :, 61]
+#plotReceptiveField(orig_test_images[m], [layerinfo[0], layerinfo[1], layerinfo[2], layerinfo[3], layerinfo[4]], o)
+
+#o = layeroutputs[4]['output'][:, :, 61]
+#plotReceptiveField(orig_test_images[m], [layerinfo[0], layerinfo[1], layerinfo[2], layerinfo[3], layerinfo[4], layerinfo[5]], o)
+#o = layeroutputs[-1]['output'][:, :, 61]
+#plotReceptiveField(orig_test_images[m], layerinfo, o)
+
+
 #evalModel(debugmodel)
 df = pd.read_csv('test.csv', index_col=0)
 di = class_names.index('dog')
 ci = class_names.index('cat')
 sel = df[df['label'].isin([di, ci])]
 sel = df[df['predicted'].isin([di, ci])]
+print(sel.head(100))
 sel.drop(['label', 'predicted'], axis=1, inplace=True)
 #cols = sel.columns[32:-1]   #32-63
-cols = [sel.columns[i] for i in range(len(sel.columns)) if 'conv2d_1_' in sel.columns[i] or 'conv2d_2_' in sel.columns[i]]
+cols = [sel.columns[i] for i in range(len(sel.columns)) if 'conv2d_1-' in sel.columns[i]]# or 'conv2d_2_' in sel.columns[i]]
 #cols = sel.columns[:32]
 #cols = cols[:30]
 cols = [c for c in sel.columns if c not in cols and c != 'iscorrect']
 sel.drop(cols, axis=1, inplace=True)
 bds = binarize(sel)
+print(bds.head(100))
 correct = bds[bds['iscorrect']]
 incorrect = bds[~bds['iscorrect']]
+print(incorrect.head())
 correct.drop('iscorrect', axis=1, inplace=True)
 incorrect.drop('iscorrect', axis=1, inplace=True)
-mineContrastPatterns(correct, incorrect)
+cpats = mineContrastPatterns(correct, incorrect)
+
+pat = cpats[0]['pattern']
+m = cpats[0]['incorrectmatches'][0]
+outs = debugmodel.predict(np.asarray([test_images[m]]))
+layeroutputs = [{'name': debugmodel.layers[i + 1].name, 'output': outs[i][0]} for i in range(len(outs)) if '2d' in debugmodel.layers[i + 1].name]
+layerinfo = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if '2d' in l.name]
+#layerinfo.insert(0, {'kernel': debugmodel.layers[1].kernel_size, 'stride': debugmodel.layers[1].strides})
+
+for item in pat:
+    tokens = item.split('-')
+    ftokens = tokens[1].split('_')
+    layerindex = -1
+    fmapindex = int(ftokens[0])
+    for li in range(len(layeroutputs)):
+        if layeroutputs[li]['name'].startswith(tokens[0]):
+            layerindex = li
+            break
+    o = layeroutputs[layerindex]['output'][:, :, fmapindex]
+    layerset = layerinfo[:layerindex + 1]
+    plotReceptiveField(orig_test_images[m], layerset, o)
+    print(1)
+
+
+#o = l[0]['output'][:, :, 1]
+o = layeroutputs[-1]['output'][:, :, 61]
+#plotReceptiveField(orig_test_images[imageindex], [ll[0]], o)
+plotReceptiveField(orig_test_images[m], layerinfo, o)
 
 model = models.Sequential()
 model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)))
