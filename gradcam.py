@@ -52,7 +52,7 @@ last_conv_layer_name = "block14_sepconv2_act"
 #)
 
 #display(Image(filename='cam/elephant.png'))
-img_path = 'cam/elephant.png'
+img_path = 'heat/elephant.png'
 
 """
 ## The Grad-CAM algorithm
