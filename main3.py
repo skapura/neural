@@ -6,7 +6,8 @@ import cv2
 import ssl
 import warnings
 import pandas as pd
-from mlutil import makeDebugModel, heatmap, overlayHeatmap
+from mlutil import makeDebugModel, heatmap, overlayHeatmap, calcReceptiveField
+from cifar10vgg import build_vgg16
 
 
 def buildModel(test_images, test_labels):
@@ -74,18 +75,31 @@ class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
 
 model = models.load_model('testmodel_gap_func.keras', compile=True)
 debugmodel = makeDebugModel(model)
-#heat = make_gradcam_heatmap(np.asarray([test_images[12]]), model, 'activation_2', 5)
-#save_and_display_gradcam(np.asarray([orig_test_images[12]]), heat)
-results = evalModel(model, test_images, test_labels)
-di = class_names.index('dog')
-ci = class_names.index('cat')
-results = results[results['label'].isin([di, ci])]
-results = results[results['predicted'].isin([di, ci])]
-correct = results[results['iscorrect']]
-incorrect = results[~results['iscorrect']]
+#model = build_vgg16()
 
+#results = evalModel(model, test_images, test_labels)
+#di = class_names.index('dog')
+#ci = class_names.index('cat')
+#results = results[results['label'].isin([di, ci])]
+#results = results[results['predicted'].isin([di, ci])]
+#correct = results[results['iscorrect']]
+#incorrect = results[~results['iscorrect']]
 
-
+#index = incorrect.index.values[0]
+#index = results.index.values[0]
+outs = debugmodel.predict(np.asarray([test_images[0]]))
+convinfo = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if 'conv2d' in l.name or 'max_pooling2d' in l.name]
+fmaps = outs[1][0]
+currfmap = fmaps[:, :, 0]
+for x in range(currfmap.shape[1]):
+    for y in range(currfmap.shape[0]):
+        start, end = calcReceptiveField(x, y, [convinfo[0]])
+        v = currfmap[y, x]
+        v2 = currfmap[y, x + 1]
+        v3 = currfmap[y + 1, x]
+        print(1)
+start, end = calcReceptiveField(0, 0, [convinfo[0]])
+#outs = debugmodel.predict(np.asarray([test_images[index]]))
 
 for index, row in correct.iterrows():
     heatmap, himg = heatmap(np.asarray([test_images[index]]), model, 'activation_2', row['predicted'])

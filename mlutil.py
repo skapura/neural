@@ -46,6 +46,7 @@ def calcReceptiveField(x, y, layers):
         endy = endy * l['stride'][0] + l['kernel'][0] - 1
     return (startx, endx), (starty, endy)
 
+
 def calcReceptiveField2(u, v, layers):
     for l in reversed(layers):
         print(l)
