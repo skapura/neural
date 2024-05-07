@@ -13,6 +13,12 @@ def makeDebugModel(model, onlyconv=False):
     return debugmodel
 
 
+def makeLayerOutputModel(model, layernames):
+    outputs = [layer.output for layer in model.layers if layer.name in layernames]
+    outputmodel = models.Model(inputs=model.inputs, outputs=outputs)
+    return outputmodel
+
+
 def evalModel(X, y, model):
     ypreds = model.predict(X)
     #correct = list()

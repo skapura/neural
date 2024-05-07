@@ -6,7 +6,7 @@ import cv2
 import ssl
 import warnings
 import pandas as pd
-from mlutil import makeDebugModel, heatmap, overlayHeatmap, calcReceptiveField
+from mlutil import makeDebugModel, makeLayerOutputModel, heatmap, overlayHeatmap, calcReceptiveField
 from cifar10vgg import build_vgg16
 
 
@@ -44,11 +44,6 @@ def buildModel(test_images, test_labels):
 
 
 
-
-
-
-
-
 def evalModel(model, images, labels):
     labels = np.squeeze(labels)
     outs = model.predict(images)
@@ -59,6 +54,20 @@ def evalModel(model, images, labels):
     results.index.name = 'index'
     return results
 
+
+def getLayerOutputRange(model, layername, images):
+    layer1model = makeLayerOutputModel(model, [layername])
+    numfeatures = model.get_layer(layername).output.shape[3]
+
+    outs = layer1model.predict(images)
+
+    minmax = [(0, 0) for _ in range(numfeatures)]
+    for i in range(len(test_images)):
+        for fi in range(numfeatures):
+            m = outs[i, :, :, fi]
+            minmax[fi] = (min(minmax[fi][0], np.min(m)), max(minmax[fi][1], np.max(m)))
+
+    return minmax
 
 
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -87,17 +96,47 @@ debugmodel = makeDebugModel(model)
 
 #index = incorrect.index.values[0]
 #index = results.index.values[0]
+
+
+
+
+
+#norms = np.zeros((3, 3))
+#a = outs[1][:, :, :, 0]
+#mn = np.min(a)
+#mx = np.max(a)
+#normed = (a - mn) / (mx - mn)
+
+franges = getLayerOutputRange(model, 'activation', test_images)
+
 outs = debugmodel.predict(np.asarray([test_images[0]]))
+predicted = np.argmax(outs[-1])
+heatmap, himg = heatmap(np.asarray([test_images[0]]), model, 'activation_2', predicted)
+heatimage = overlayHeatmap(np.asarray([orig_test_images[0]]), heatmap)
 convinfo = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if 'conv2d' in l.name or 'max_pooling2d' in l.name]
-fmaps = outs[1][0]
-currfmap = fmaps[:, :, 0]
-for x in range(currfmap.shape[1]):
-    for y in range(currfmap.shape[0]):
-        start, end = calcReceptiveField(x, y, [convinfo[0]])
-        v = currfmap[y, x]
-        v2 = currfmap[y, x + 1]
-        v3 = currfmap[y + 1, x]
-        print(1)
+
+h = np.unique(himg)
+med = np.median(himg)
+himg[himg < .7] = 0
+layerindex = 2
+fmaps = outs[layerindex][0]
+heats = []
+for fi in range(fmaps.shape[2]):
+    currfmap = (fmaps[:, :, fi] - franges[fi][0]) / (franges[fi][1] - franges[fi][0])
+    heatfeatmap = np.zeros(currfmap.shape)
+    for x in range(currfmap.shape[1]):
+        for y in range(currfmap.shape[0]):
+            xrange, yrange = calcReceptiveField(x, y, [convinfo[0]])
+            v = currfmap[y, x]
+
+            # Use all vals in receptive field on heatmap
+            hr = himg[yrange[0]:yrange[1]+1, xrange[0]:xrange[1]+1]
+            heatfeatmap[y, x] = currfmap[y, x] * np.sum(hr)
+
+            # Only use cenver val in receptive field on heatmap
+            #heatfeatmap[y, x] = currfmap[y, x] * himg[yrange[0] + 1, xrange[0] + 1]
+    heats.append(heatfeatmap)
+print(1)
 start, end = calcReceptiveField(0, 0, [convinfo[0]])
 #outs = debugmodel.predict(np.asarray([test_images[index]]))
 
