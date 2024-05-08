@@ -94,30 +94,41 @@ debugmodel = makeDebugModel(model)
 #mx = np.max(a)
 #normed = (a - mn) / (mx - mn)
 
-franges = mlutil.getLayerOutputRange(model, ['conv2d', 'activation', 'prediction'], test_images)
+outputlayers = ['activation', 'prediction']
+franges = mlutil.getLayerOutputRange(model, outputlayers, test_images)
 
-outs = debugmodel.predict(np.asarray([test_images[0]]))
+layermodel = makeLayerOutputModel(model, outputlayers)
+outs = layermodel.predict(np.asarray([test_images[0]]))
 predicted = np.argmax(outs[-1])
 heatmap, himg = heatmap(np.asarray([test_images[0]]), model, 'activation_2', predicted)
 #heatimage = overlayHeatmap(np.asarray([orig_test_images[0]]), heatmap)
-convinfo = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if 'conv2d' in l.name or 'max_pooling2d' in l.name]
+convinfo = [{'name': l.name, 'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if 'conv2d' in l.name or 'max_pooling2d' in l.name]
 
-h = np.unique(himg)
-med = np.median(himg)
+
 himg[himg < .7] = 0
+
+# Get subset of conv layers
 idx = layerIndex(model, 'activation')
-layerindex = 2
+convname = model.layers[idx - 1].name
+receptivelayers = []
+for l in convinfo:
+    receptivelayers.append(l)
+    if l['name'] == convname:
+        break
+
+layerindex = 0
 fmaps = outs[layerindex][0]
+r = franges[layerindex]
 heats = []
 for fi in range(fmaps.shape[2]):
-    if franges[fi][1] == 0.0:
+    if r[fi][1] == 0.0:
         currfmap = fmaps[:, : fi]
     else:
-        currfmap = (fmaps[:, :, fi] - franges[fi][0]) / (franges[fi][1] - franges[fi][0])
+        currfmap = (fmaps[:, :, fi] - r[fi][0]) / (r[fi][1] - r[fi][0])
     heatfeatmap = np.zeros(currfmap.shape)
     for x in range(currfmap.shape[1]):
         for y in range(currfmap.shape[0]):
-            xrange, yrange = calcReceptiveField(x, y, [convinfo[0]])
+            xrange, yrange = calcReceptiveField(x, y, receptivelayers)
             v = currfmap[y, x]
 
             # Use all vals in receptive field on heatmap
