@@ -1,4 +1,4 @@
-from tensorflow.keras import datasets, layers, models
+from tensorflow.keras import datasets, layers, models, callbacks
 from keras.src.models import Functional
 import tensorflow as tf
 import numpy as np
@@ -6,11 +6,12 @@ import cv2
 import ssl
 import warnings
 import pandas as pd
-from mlutil import makeDebugModel, makeLayerOutputModel, heatmap, overlayHeatmap, calcReceptiveField
+from mlutil import makeDebugModel, makeLayerOutputModel, heatmap, overlayHeatmap, calcReceptiveField, layerIndex
+import mlutil
 from cifar10vgg import build_vgg16
 
 
-def buildModel(test_images, test_labels):
+def buildModel(train_images, train_labels, test_images, test_labels):
     img_input = layers.Input(shape=(32, 32, 3))
     x = layers.Conv2D(32, (3, 3))(img_input)
     x = layers.Activation('relu')(x)
@@ -21,7 +22,7 @@ def buildModel(test_images, test_labels):
     x = layers.Conv2D(64, (3, 3))(x)
     x = layers.Activation('relu')(x)
     x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(10, activation='softmax')(x)
+    x = layers.Dense(10, name='prediction', activation='softmax')(x)
     model = Functional(img_input, x)
     model.compile(optimizer='adam', loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False), metrics=['accuracy'])
     history = model.fit(train_images, train_labels, epochs=10, validation_data=(test_images, test_labels))
@@ -55,21 +56,6 @@ def evalModel(model, images, labels):
     return results
 
 
-def getLayerOutputRange(model, layername, images):
-    layer1model = makeLayerOutputModel(model, [layername])
-    numfeatures = model.get_layer(layername).output.shape[3]
-
-    outs = layer1model.predict(images)
-
-    minmax = [(0, 0) for _ in range(numfeatures)]
-    for i in range(len(test_images)):
-        for fi in range(numfeatures):
-            m = outs[i, :, :, fi]
-            minmax[fi] = (min(minmax[fi][0], np.min(m)), max(minmax[fi][1], np.max(m)))
-
-    return minmax
-
-
 ssl._create_default_https_context = ssl._create_unverified_context
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -82,6 +68,7 @@ train_images, test_images = orig_train_images / 255.0, orig_test_images / 255.0
 class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
                'dog', 'frog', 'horse', 'ship', 'truck']
 
+#buildModel(train_images, train_labels, test_images, test_labels)
 model = models.load_model('testmodel_gap_func.keras', compile=True)
 debugmodel = makeDebugModel(model)
 #model = build_vgg16()
@@ -107,22 +94,26 @@ debugmodel = makeDebugModel(model)
 #mx = np.max(a)
 #normed = (a - mn) / (mx - mn)
 
-franges = getLayerOutputRange(model, 'activation', test_images)
+franges = mlutil.getLayerOutputRange(model, ['conv2d', 'activation', 'prediction'], test_images)
 
 outs = debugmodel.predict(np.asarray([test_images[0]]))
 predicted = np.argmax(outs[-1])
 heatmap, himg = heatmap(np.asarray([test_images[0]]), model, 'activation_2', predicted)
-heatimage = overlayHeatmap(np.asarray([orig_test_images[0]]), heatmap)
+#heatimage = overlayHeatmap(np.asarray([orig_test_images[0]]), heatmap)
 convinfo = [{'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if 'conv2d' in l.name or 'max_pooling2d' in l.name]
 
 h = np.unique(himg)
 med = np.median(himg)
 himg[himg < .7] = 0
+idx = layerIndex(model, 'activation')
 layerindex = 2
 fmaps = outs[layerindex][0]
 heats = []
 for fi in range(fmaps.shape[2]):
-    currfmap = (fmaps[:, :, fi] - franges[fi][0]) / (franges[fi][1] - franges[fi][0])
+    if franges[fi][1] == 0.0:
+        currfmap = fmaps[:, : fi]
+    else:
+        currfmap = (fmaps[:, :, fi] - franges[fi][0]) / (franges[fi][1] - franges[fi][0])
     heatfeatmap = np.zeros(currfmap.shape)
     for x in range(currfmap.shape[1]):
         for y in range(currfmap.shape[0]):
@@ -133,9 +124,13 @@ for fi in range(fmaps.shape[2]):
             hr = himg[yrange[0]:yrange[1]+1, xrange[0]:xrange[1]+1]
             heatfeatmap[y, x] = currfmap[y, x] * np.sum(hr)
 
-            # Only use cenver val in receptive field on heatmap
+            # Only use center val in receptive field on heatmap (assume 3x3 kernel)
             #heatfeatmap[y, x] = currfmap[y, x] * himg[yrange[0] + 1, xrange[0] + 1]
     heats.append(heatfeatmap)
+sel = []
+for h in heats:
+    if h.max() >= 2.0:
+        sel.append(h)
 print(1)
 start, end = calcReceptiveField(0, 0, [convinfo[0]])
 #outs = debugmodel.predict(np.asarray([test_images[index]]))

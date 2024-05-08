@@ -1,5 +1,5 @@
 import numpy as np
-from tensorflow.keras import models
+from tensorflow.keras import models, callbacks
 import tensorflow as tf
 import cv2
 
@@ -17,6 +17,13 @@ def makeLayerOutputModel(model, layernames):
     outputs = [layer.output for layer in model.layers if layer.name in layernames]
     outputmodel = models.Model(inputs=model.inputs, outputs=outputs)
     return outputmodel
+
+
+def layerIndex(model, layername):
+    for li in range((len(model.layers))):
+        if model.layers[li].name == layername:
+            return li
+    return None
 
 
 def evalModel(X, y, model):
@@ -110,3 +117,30 @@ def overlayHeatmap(image, heat, alpha=0.4):
     heatmap = cv2.applyColorMap(heatmap, colormap)
     output = cv2.addWeighted(image[0], alpha, heatmap, 1 - alpha, 0)
     return output
+
+
+def getLayerOutputRange(model, layernames, images):
+    layermodel = makeLayerOutputModel(model, layernames)
+
+    class LayerCallback(callbacks.Callback):
+        ranges = []
+
+        def __init__(self, model):
+            for l in model.output_shape:
+                self.ranges.append([(9999.0, -9999.0) for _ in range(l[-1])])
+            super(callbacks.Callback, self).__init__()
+
+
+        def on_predict_batch_end(self, batch, logs=None):
+            outs = logs['outputs']
+            for i in range(0, len(outs)):
+                for fi in range(outs[i].shape[-1]):
+                    fmaps = outs[i][:, :, :, fi] if len(outs[i].shape) == 4 else outs[i]
+                    minval = tf.reduce_min(fmaps).numpy()
+                    maxval = tf.reduce_max(fmaps).numpy()
+                    c = self.ranges[i][fi]
+                    self.ranges[i][fi] = (min(c[0], minval), max(c[1], maxval))
+
+    layerinfo = LayerCallback(layermodel)
+    layermodel.predict(images, callbacks=[layerinfo])
+    return layerinfo.ranges
