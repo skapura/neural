@@ -95,54 +95,37 @@ debugmodel = makeDebugModel(model)
 #normed = (a - mn) / (mx - mn)
 
 outputlayers = ['activation', 'prediction']
+lastlayer = 'activation_2'
+
+trans = mlutil.featuresToDataFrame(model, outputlayers, lastlayer, test_images)
+
+
 franges = mlutil.getLayerOutputRange(model, outputlayers, test_images)
 
-layermodel = makeLayerOutputModel(model, outputlayers)
-outs = layermodel.predict(np.asarray([test_images[0]]))
-predicted = np.argmax(outs[-1])
-heatmap, himg = heatmap(np.asarray([test_images[0]]), model, 'activation_2', predicted)
-#heatimage = overlayHeatmap(np.asarray([orig_test_images[0]]), heatmap)
-convinfo = [{'name': l.name, 'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if 'conv2d' in l.name or 'max_pooling2d' in l.name]
 
 
-himg[himg < .7] = 0
+image = test_images[0]
+heats = mlutil.combineHeatAndFeatures(model, franges, outputlayers, 'activation_2', image)
 
-# Get subset of conv layers
-idx = layerIndex(model, 'activation')
-convname = model.layers[idx - 1].name
-receptivelayers = []
-for l in convinfo:
-    receptivelayers.append(l)
-    if l['name'] == convname:
-        break
+trans = []
+head = []
+for layerindex in range(len(heats)):
+    for fi in range(len(heats[layerindex])):
+        head.append(outputlayers[layerindex] + '-' + str(fi))
+        v = heats[layerindex][fi].max()
+        trans.append(v)
 
-layerindex = 0
-fmaps = outs[layerindex][0]
-r = franges[layerindex]
-heats = []
-for fi in range(fmaps.shape[2]):
-    if r[fi][1] == 0.0:
-        currfmap = fmaps[:, : fi]
-    else:
-        currfmap = (fmaps[:, :, fi] - r[fi][0]) / (r[fi][1] - r[fi][0])
-    heatfeatmap = np.zeros(currfmap.shape)
-    for x in range(currfmap.shape[1]):
-        for y in range(currfmap.shape[0]):
-            xrange, yrange = calcReceptiveField(x, y, receptivelayers)
-            v = currfmap[y, x]
 
-            # Use all vals in receptive field on heatmap
-            hr = himg[yrange[0]:yrange[1]+1, xrange[0]:xrange[1]+1]
-            heatfeatmap[y, x] = currfmap[y, x] * np.sum(hr)
 
-            # Only use center val in receptive field on heatmap (assume 3x3 kernel)
-            #heatfeatmap[y, x] = currfmap[y, x] * himg[yrange[0] + 1, xrange[0] + 1]
-    heats.append(heatfeatmap)
 sel = []
 for h in heats:
-    if h.max() >= 2.0:
-        sel.append(h)
+    layer = []
+    for f in h:
+        if f.max() > 2.0:
+            layer.append(h)
+    sel.append(layer)
 print(1)
+convinfo = [{'name': l.name, 'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides} for l in debugmodel.layers if 'conv2d' in l.name or 'max_pooling2d' in l.name]
 start, end = calcReceptiveField(0, 0, [convinfo[0]])
 #outs = debugmodel.predict(np.asarray([test_images[index]]))
 

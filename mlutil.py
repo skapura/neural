@@ -2,6 +2,7 @@ import numpy as np
 from tensorflow.keras import models, callbacks
 import tensorflow as tf
 import cv2
+import pandas as pd
 
 
 def makeDebugModel(model, onlyconv=False):
@@ -17,6 +18,12 @@ def makeLayerOutputModel(model, layernames):
     outputs = [layer.output for layer in model.layers if layer.name in layernames]
     outputmodel = models.Model(inputs=model.inputs, outputs=outputs)
     return outputmodel
+
+
+def getConvInfo(model):
+    convinfo = [{'name': l.name, 'kernel': l.kernel_size if 'conv2d' in l.name else l.pool_size, 'stride': l.strides}
+                for l in model.layers if 'conv2d' in l.name or 'max_pooling2d' in l.name]
+    return convinfo
 
 
 def layerIndex(model, layername):
@@ -144,3 +151,88 @@ def getLayerOutputRange(model, layernames, images):
     layerinfo = LayerCallback(layermodel)
     layermodel.predict(images, callbacks=[layerinfo])
     return layerinfo.ranges
+
+
+def getConvLayerSubset(model, lastlayer):
+    convinfo = getConvInfo(model)
+    idx = layerIndex(model, lastlayer)
+    convname = model.layers[idx - 1].name
+    receptivelayers = []
+    for l in convinfo:
+        receptivelayers.append(l)
+        if l['name'] == convname:
+            break
+    return receptivelayers
+
+
+def combineHeatAndFeatures(model, franges, outputlayers, lastconvlayer, image):
+    # Get initial outputs
+    layermodel = makeLayerOutputModel(model, outputlayers)
+    outs = layermodel.predict(np.asarray([image]))
+    #outs = layermodel(np.asarray([image]), training=False)
+    predicted = np.argmax(outs[-1])
+    _, himg = heatmap(np.asarray([image]), model, lastconvlayer, predicted)
+
+    himg[himg < .7] = 0
+
+    heats = []
+    for layerindex in range(len(outputlayers) - 1):
+
+        # Get subset of conv layers
+        receptivelayerinfo = getConvLayerSubset(model, outputlayers[layerindex])
+
+        # layerindex = 1
+        fmaps = outs[layerindex][0]
+        r = franges[layerindex]
+        currlayerheats = []
+        for fi in range(fmaps.shape[2]):
+            if r[fi][1] == 0.0:
+                currfmap = fmaps[:, : fi]
+            else:
+                currfmap = (fmaps[:, :, fi] - r[fi][0]) / (r[fi][1] - r[fi][0])
+            heatfeatmap = np.zeros(currfmap.shape)
+            for x in range(currfmap.shape[1]):
+                for y in range(currfmap.shape[0]):
+                    xrange, yrange = calcReceptiveField(x, y, receptivelayerinfo)
+                    v = currfmap[y, x]
+
+                    # Use all vals in receptive field on heatmap
+                    hr = himg[yrange[0]:yrange[1] + 1, xrange[0]:xrange[1] + 1]
+                    heatfeatmap[y, x] = currfmap[y, x] * np.sum(hr)
+
+                    # Only use center val in receptive field on heatmap (assume 3x3 kernel)
+                    # heatfeatmap[y, x] = currfmap[y, x] * himg[yrange[0] + 1, xrange[0] + 1]
+            currlayerheats.append(heatfeatmap)
+        heats.append(currlayerheats)
+    return heats
+
+
+def featuresToDataFrame(model, outputlayers, lastlayer, images):
+
+    # Generate header row
+    head = []
+    for l in outputlayers[:-1]:
+        layer = model.get_layer(l)
+        for i in range(layer.output.shape[-1]):
+            head.append(l + '-' + str(i))
+
+    # Convert each list of feature map activations to transactions
+    transactions = []
+    franges = getLayerOutputRange(model, outputlayers, images)
+    i = 0
+    for img in images:
+        print(str(i) + '/' + str(len(images)))
+        i += 1
+        heats = combineHeatAndFeatures(model, franges, outputlayers, lastlayer, img)
+
+        trans = []
+        for layerindex in range(len(heats)):
+            for fi in range(len(heats[layerindex])):
+                v = heats[layerindex][fi].max()
+                trans.append(v)
+        transactions.append(trans)
+
+    df = pd.DataFrame(transactions, columns=head)
+    df.index.name = 'index'
+    return df
+        
