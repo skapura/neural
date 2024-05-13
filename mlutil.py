@@ -174,6 +174,7 @@ def combineHeatAndFeatures(model, franges, outputlayers, lastconvlayer, image):
     _, himg = heatmap(np.asarray([image]), model, lastconvlayer, predicted)
 
     himg[himg < .7] = 0
+    himg[himg >= .7] = 1
 
     heats = []
     for layerindex in range(len(outputlayers) - 1):
@@ -198,41 +199,45 @@ def combineHeatAndFeatures(model, franges, outputlayers, lastconvlayer, image):
 
                     # Use all vals in receptive field on heatmap
                     hr = himg[yrange[0]:yrange[1] + 1, xrange[0]:xrange[1] + 1]
-                    heatfeatmap[y, x] = currfmap[y, x] * np.sum(hr)
+                    heatfeatmap[y, x] = v * np.sum(hr)
 
                     # Only use center val in receptive field on heatmap (assume 3x3 kernel)
-                    # heatfeatmap[y, x] = currfmap[y, x] * himg[yrange[0] + 1, xrange[0] + 1]
+                    # heatfeatmap[y, x] = v * himg[yrange[0] + 1, xrange[0] + 1]
             currlayerheats.append(heatfeatmap)
         heats.append(currlayerheats)
-    return heats
+    return heats, predicted
 
 
-def featuresToDataFrame(model, outputlayers, lastlayer, images):
+def featuresToDataFrame(model, outputlayers, lastlayer, franges, indexes, images, labels):
 
     # Generate header row
-    head = []
+    head = ['index']
     for l in outputlayers[:-1]:
         layer = model.get_layer(l)
         for i in range(layer.output.shape[-1]):
             head.append(l + '-' + str(i))
+    head.append('predicted')
+    head.append('label')
 
     # Convert each list of feature map activations to transactions
     transactions = []
-    franges = getLayerOutputRange(model, outputlayers, images)
-    i = 0
-    for img in images:
+    for i in range(len(images)):
         print(str(i) + '/' + str(len(images)))
-        i += 1
-        heats = combineHeatAndFeatures(model, franges, outputlayers, lastlayer, img)
+        index = indexes[i]
+        img = images[i]
+        label = labels[i]
+        heats, predicted = combineHeatAndFeatures(model, franges, outputlayers, lastlayer, img)
 
-        trans = []
+        trans = [index]
         for layerindex in range(len(heats)):
             for fi in range(len(heats[layerindex])):
                 v = heats[layerindex][fi].max()
                 trans.append(v)
+        trans.append(predicted)
+        trans.append(label)
         transactions.append(trans)
 
     df = pd.DataFrame(transactions, columns=head)
-    df.index.name = 'index'
+    df.set_index('index', inplace=True)
     return df
         
