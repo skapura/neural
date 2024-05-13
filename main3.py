@@ -67,17 +67,17 @@ def filterLabels(labels, classnames, selected):
     return selectedlabels
 
 
-def generateTrans(test_images, test_labels, class_names):
+def generateTrans(images, labels, class_names):
     model = models.load_model('testmodel_gap_func.keras', compile=True)
-    test_labels = test_labels.squeeze()
-    selectedindexes = filterLabels(test_labels, class_names, ['cat', 'dog'])
-    selectedimages = [test_images[i] for i in selectedindexes]
-    selectedlabels = [test_labels[i] for i in selectedindexes]
+    labels = labels.squeeze()
+    selectedindexes = filterLabels(labels, class_names, ['cat', 'dog'])
+    selectedimages = [images[i] for i in selectedindexes]
+    selectedlabels = [labels[i] for i in selectedindexes]
 
     outputlayers = ['activation', 'activation_1', 'prediction']
     lastlayer = 'activation_2'
 
-    franges = mlutil.getLayerOutputRange(model, outputlayers, test_images)
+    franges = mlutil.getLayerOutputRange(model, outputlayers, images)
     trans = mlutil.featuresToDataFrame(model, outputlayers, lastlayer, franges, selectedindexes, selectedimages,
                                        selectedlabels)
     t = trans[trans['predicted'].isin([di, ci])]
@@ -113,7 +113,8 @@ ci = class_names.index('cat')
 #index = incorrect.index.values[0]
 #index = results.index.values[0]
 
-#generateTrans(test_images, test_labels, class_names)
+# trn = generateTrans(test_images, test_labels, class_names)
+# trn.to_csv('trans.csv')
 
 
 trans = pd.read_csv('trans.csv', index_col='index')
