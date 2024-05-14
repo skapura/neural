@@ -1,5 +1,6 @@
 from tensorflow.keras import datasets, layers, models, callbacks
 from keras.src.models import Functional
+from sklearn.tree import DecisionTreeClassifier
 import tensorflow as tf
 import numpy as np
 import cv2
@@ -118,6 +119,8 @@ ci = class_names.index('cat')
 
 
 trans = pd.read_csv('trans.csv', index_col='index')
+
+# Drop columns that are all zero
 droplist = []
 for c in trans.columns[:-2]:
     mx = trans[c].max()
@@ -127,13 +130,21 @@ trans.drop(droplist, axis=1, inplace=True)
 
 
 iscorrect = (trans['predicted'] == trans['label']).to_numpy()
+
+dtree = DecisionTreeClassifier(criterion='entropy')
+dtree.fit(trans, iscorrect)
+a = dtree.score(trans, iscorrect)
+
 cutpoints = []
+infolist = []
 for c in trans.columns[:-2]:
     vals = trans[c].to_numpy()
-    cuts = pats.cutPoints(vals, iscorrect)
+    cuts, info = pats.cutPoints(vals, iscorrect)
     cutpoints.append(cuts)
+    infolist.append(info)
 bds = pats.discretize(trans, cutpoints)
 bdf = pats.binarize(bds, cutpoints)
+
 correct = bdf[bdf['iscorrect']]
 incorrect = bdf[~bdf['iscorrect']]
 correct.drop('iscorrect', axis=1, inplace=True)

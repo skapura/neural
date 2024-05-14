@@ -19,3 +19,5 @@ __pycache__/
 *.png
 *.keras
 *.h5
+~*
+*.xlsx

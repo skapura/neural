@@ -37,7 +37,7 @@ def cutPoints(vals, iscorrect):
             mincut = cutpoint
             mininfo = info
     cutpoints.append(mincut)
-    return cutpoints
+    return cutpoints, mininfo
 
 
 def discretize(ds, cutpoints):
