@@ -3,6 +3,9 @@ from tensorflow.keras import models, callbacks
 import tensorflow as tf
 import cv2
 import pandas as pd
+import shutil
+import os
+import glob
 
 
 def makeDebugModel(model, onlyconv=False):
@@ -97,15 +100,18 @@ def overlayHeatmap(image, heat, alpha=0.4):
     return output
 
 
-def getLayerOutputRange(model, layernames, images):
+def getLayerOutputRange(model, layernames, images, franges=None):
     layermodel = makeLayerOutputModel(model, layernames)
 
     class LayerCallback(callbacks.Callback):
         ranges = []
 
-        def __init__(self, model):
-            for l in model.output_shape:
-                self.ranges.append([(9999.0, -9999.0) for _ in range(l[-1])])
+        def __init__(self, model, franges):
+            if franges is None:
+                for l in model.output_shape:
+                    self.ranges.append([(9999.0, -9999.0) for _ in range(l[-1])])
+            else:
+                self.ranges = franges
             super(callbacks.Callback, self).__init__()
 
 
@@ -119,7 +125,7 @@ def getLayerOutputRange(model, layernames, images):
                     c = self.ranges[i][fi]
                     self.ranges[i][fi] = (min(c[0], minval), max(c[1], maxval))
 
-    layerinfo = LayerCallback(layermodel)
+    layerinfo = LayerCallback(layermodel, franges)
     layermodel.predict(images, callbacks=[layerinfo])
     return layerinfo.ranges
 
@@ -179,7 +185,78 @@ def combineHeatAndFeatures(model, franges, outputlayers, lastconvlayer, image):
     return heats, predicted
 
 
-def featuresToDataFrame(model, outputlayers, lastlayer, franges, indexes, images, labels):
+def featuresToDataFrame(model, outputlayers, images):
+    maskheat = False
+
+    layermodel = makeLayerOutputModel(model, outputlayers)
+
+    # Generate header row
+    head = []
+    for l in outputlayers[:-1]:
+        layer = model.get_layer(l)
+        for i in range(layer.output.shape[-1]):
+            head.append(l + '-' + str(i))
+    head.append('predicted')
+    head.append('label')
+    head.append('imagepath')
+
+    #if not os.path.exists('.session'):
+    #    os.makedirs('.session')
+    #else:
+    #    for f in glob.glob('heat_*'):
+    #        os.remove(f)
+
+    # Convert each list of feature map activations to transactions
+    transactions = []
+    pathindex = 0
+    for imagebatch, labelbatch in images:
+        batchsize = imagebatch.shape[0]
+        paths = images.file_paths[pathindex:pathindex + batchsize]
+        pathindex += batchsize
+        outs = layermodel.predict(imagebatch)
+        for i in range(batchsize):
+            trans = []
+            pred = np.argmax(outs[-1][i])
+            label = np.argmax(labelbatch[i])
+            imagepath = paths[i]
+            if maskheat:
+                _, himg = heatmap(np.asarray([imagebatch[i, :, :, :]]), model, 'activation_3', pred)
+            #np.save('heat_' + str(pathindex).zfill(5) + '.npy', himg)
+            li = 0
+            for layer in outs[:-1]:
+
+                receptivelayerinfo = getConvLayerSubset(model, outputlayers[li])
+                li += 1
+
+                for fi in range(layer.shape[-1]):
+                    #print('image:' + str(pathindex + i) + ' layer:' + str(li - 1) + ' feat:' + str(fi))
+
+                    if maskheat:
+                        currfmap = layer[i, :, :, fi]
+                        heatfeatmap = np.zeros(currfmap.shape)
+                        for x in range(currfmap.shape[1]):
+                            for y in range(currfmap.shape[0]):
+                                xrange, yrange = calcReceptiveField(x, y, receptivelayerinfo)
+                                v = currfmap[y, x]
+                                hr = himg[yrange[0]:yrange[1] + 1, xrange[0]:xrange[1] + 1]
+                                heatfeatmap[y, x] = v * np.sum(hr)
+
+                        v = heatfeatmap.max()
+                    else:
+                        v = layer[i, :, :, fi].max()
+                    trans.append(v)
+            trans.append(pred)
+            trans.append(label)
+            trans.append(imagepath)
+            transactions.append(trans)
+
+    df = pd.DataFrame(transactions, columns=head)
+    #df.set_index('index', inplace=True)
+    df.index.name = 'index'
+    return df
+
+
+def featuresToDataFrame2(model, outputlayers, lastlayer, franges, indexes, images, labels):
 
     # Generate header row
     head = ['index']

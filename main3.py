@@ -50,6 +50,25 @@ def buildModel(train_images, train_labels, test_images, test_labels):
     #model.save('testmodel_gap.keras')
 
 
+def buildModelLarge(train_images, train_labels, test_images, test_labels):
+    img_input = layers.Input(shape=(32, 32, 3))
+    x = layers.Conv2D(32, (3, 3))(img_input)
+    x = layers.Activation('relu')(x)
+    x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Conv2D(64, (3, 3))(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2D(128, (3, 3))(x)
+    x = layers.Activation('relu')(x)
+    x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Conv2D(64, (3, 3))(x)
+    x = layers.Activation('relu')(x)
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dense(10, name='prediction', activation='softmax')(x)
+    model = Functional(img_input, x)
+    model.compile(optimizer='adam', loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False), metrics=['accuracy'])
+    history = model.fit(train_images, train_labels, epochs=10, validation_data=(test_images, test_labels))
+    model.save('testmodel_large.keras')
+
 
 def evalModel(model, images, labels):
     labels = np.squeeze(labels)
@@ -68,8 +87,7 @@ def filterLabels(labels, classnames, selected):
     return selectedlabels
 
 
-def generateTrans(images, labels, class_names):
-    model = models.load_model('testmodel_gap_func.keras', compile=True)
+def generateTrans(model, images, labels, class_names, outputlayers):
     labels = labels.squeeze()
     selectedindexes = filterLabels(labels, class_names, ['cat', 'dog'])
     selectedimages = [images[i] for i in selectedindexes]
@@ -98,8 +116,11 @@ train_images, test_images = orig_train_images / 255.0, orig_test_images / 255.0
 class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
                'dog', 'frog', 'horse', 'ship', 'truck']
 
-#buildModel(train_images, train_labels, test_images, test_labels)
-model = models.load_model('testmodel_gap_func.keras', compile=True)
+#buildModelLarge(train_images, train_labels, test_images, test_labels)
+model = models.load_model('testmodel_large.keras', compile=True)
+#results = evalModel(model, test_images, test_labels)
+
+#model = models.load_model('testmodel_gap_func.keras', compile=True)
 debugmodel = makeDebugModel(model)
 #model = build_vgg16()
 
@@ -114,8 +135,9 @@ ci = class_names.index('cat')
 #index = incorrect.index.values[0]
 #index = results.index.values[0]
 
-# trn = generateTrans(test_images, test_labels, class_names)
-# trn.to_csv('trans.csv')
+model = models.load_model('testmodel_large.keras', compile=True)
+trn = generateTrans(model, test_images, test_labels, class_names, ['activation', 'activation_1', 'prediction'])
+trn.to_csv('trans_large.csv')
 
 
 trans = pd.read_csv('trans.csv', index_col='index')

@@ -45,7 +45,7 @@ def discretize(ds, cutpoints):
     for index, row in ds.iterrows():
         binned = [index]
         vals = row.to_numpy()
-        for i in range(len(vals[:-2])):
+        for i in range(len(vals)):
             cuts = cutpoints[i]
             found = False
             for ci in range(len(cuts)):
@@ -55,8 +55,8 @@ def discretize(ds, cutpoints):
                     break
             if not found:
                 binned.append(len(cuts))
-        binned.append(vals[-2])
-        binned.append(vals[-1])
+        #binned.append(vals[-2])
+        #binned.append(vals[-1])
         bvals.append(binned)
     cols = ['index'] + ds.columns.values.tolist()
     bds = pd.DataFrame(bvals, columns=cols)
@@ -68,20 +68,20 @@ def binarize(df, cutpoints):
 
     # Get binary column names
     bincols = ['index']
-    for ci in range(len(df.columns) - 2):
+    for ci in range(len(df.columns)):
         for i in range(len(cutpoints[ci]) + 1):
             bincols.append(df.columns[ci] + '_' + str(i))
-    bincols.append('iscorrect')
+    #bincols.append('iscorrect')
 
     # Binarize data
     brows = []
     for index, row in df.iterrows():
         rowbuf = [index]
-        for ci in range(len(df.columns) - 2):
+        for ci in range(len(df.columns)):
             v = row.iloc[ci]
             for i in range(len(cutpoints[ci]) + 1):
                 rowbuf.append(v == i)
-        rowbuf.append(row['predicted'] == row['label'])
+        #rowbuf.append(row['predicted'] == row['label'])
         brows.append(rowbuf)
 
     bdf = pd.DataFrame(brows, columns=bincols)
@@ -91,6 +91,7 @@ def binarize(df, cutpoints):
 
 def mineContrastPatterns(correct, incorrect):
     lookup = {}
+    print('start mining')
     for i in range(len(incorrect.columns)):
         lookup[incorrect.columns[i]] = i
     with open('.trans.csv', 'w') as outfile:
@@ -100,7 +101,7 @@ def mineContrastPatterns(correct, incorrect):
             itemset = [lookup[item] for item in list(compress(incorrect.columns, row))]
             writer.writerow(itemset)
 
-    fpclose = spmf.Spmf('FPClose', input_filename='.trans.csv', output_filename='.patterns.csv', arguments=[0.6, 5])
+    fpclose = spmf.Spmf('FPClose', input_filename='.trans.csv', output_filename='.patterns.csv', arguments=[0.8, 5])
     fpclose.run()
     fpclose.parse_output()
     patlist = []
