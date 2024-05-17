@@ -21,3 +21,4 @@ __pycache__/
 *.h5
 ~*
 *.xlsx
+*.pkl
