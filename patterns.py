@@ -89,9 +89,11 @@ def binarize(df, cutpoints):
     return bdf
 
 
-def mineContrastPatterns(correct, incorrect):
-    lookup = {}
+def mineContrastPatterns(correct, incorrect, minsup, supratio):
     print('start mining')
+
+    # Write transactions to temp file
+    lookup = {}
     for i in range(len(incorrect.columns)):
         lookup[incorrect.columns[i]] = i
     with open('.trans.csv', 'w') as outfile:
@@ -101,7 +103,8 @@ def mineContrastPatterns(correct, incorrect):
             itemset = [lookup[item] for item in list(compress(incorrect.columns, row))]
             writer.writerow(itemset)
 
-    fpclose = spmf.Spmf('FPClose', input_filename='.trans.csv', output_filename='.patterns.csv', arguments=[0.8, 5])
+    # Perform pattern mining on 'incorrect' dataset
+    fpclose = spmf.Spmf('FPClose', input_filename='.trans.csv', output_filename='.patterns.csv', arguments=[minsup, 5])
     fpclose.run()
     fpclose.parse_output()
     patlist = []
@@ -111,16 +114,17 @@ def mineContrastPatterns(correct, incorrect):
         sup = int(items[-1]) / float(len(incorrect))
         patlist.append({'pattern': pat, 'incorrectsupport': sup, 'correctmatches': [], 'incorrectmatches': []})
 
+    # Convert transactions to sets for pattern matching
     correctsets = []
     for index, row in correct.iterrows():
         itemset = frozenset(compress(correct.columns, row))
         correctsets.append({'index': index, 'itemset': itemset})
-
     incorrectsets = []
     for index, row in incorrect.iterrows():
         itemset = frozenset(compress(incorrect.columns, row))
         incorrectsets.append({'index': index, 'itemset': itemset})
 
+    # Find pattern support in both datasets
     i = 0
     for p in patlist:
         print(str(i) + '/' + str(len(patlist)))
@@ -133,12 +137,15 @@ def mineContrastPatterns(correct, incorrect):
         for c in incorrectsets:
             if p['pattern'].issubset(c['itemset']):
                 p['incorrectmatches'].append(c['index'])
-
         p['correctsupport'] = count / float(len(correctsets))
         p['supportdiff'] = p['incorrectsupport'] - p['correctsupport']
-        p['supportratio'] = p['incorrectsupport'] / p['correctsupport']
+        p['supportratio'] = p['incorrectsupport'] / p['correctsupport'] if p['correctsupport'] > 0.0 else -1.0
 
-    patlist.sort(key=lambda x: x['incorrectsupport'] - x['correctsupport'])
+    # Prune low support/contrast patterns
+    patlist.sort(key=lambda x: x['incorrectsupport'] - x['correctsupport'], reverse=True)
+    selectedpats = []
     for p in patlist:
-        print(str(p['incorrectsupport'] - p['correctsupport']) + ', ' + str(p['correctsupport']) + ', ' + str(p['incorrectsupport']) + ', ' + str(p['pattern']))
-    print('mine')
+        if p['supportratio'] >= supratio:
+            print(str(p['incorrectsupport'] - p['correctsupport']) + ', ' + str(p['correctsupport']) + ', ' + str(p['incorrectsupport']) + ', ' + str(p['supportratio']) + ', ' + str(p['pattern']))
+            selectedpats.append(p)
+    return selectedpats

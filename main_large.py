@@ -5,7 +5,9 @@ import tensorflow as tf
 import numpy as np
 from tensorflow import data as tf_data
 import keras
+import pickle
 import pandas as pd
+import cv2
 import mlutil
 import patterns as pats
 
@@ -46,8 +48,41 @@ def generateTrans(model, images, labels, class_names, outputlayers):
     t.to_csv('trans.csv')
 
 
-trainds = image_dataset_from_directory('images_large/train', labels='inferred', label_mode='categorical', image_size=(256, 256))
-valds = image_dataset_from_directory('images_large/val', labels='inferred', label_mode='categorical', image_size=(256, 256))
+def evalMatches(model, trans):
+    with open('patterns.pkl', 'rb') as f:
+        cpats = pickle.load(f)
+    matches = set()
+    cmatch = set()
+    for p in cpats[:10]:
+        matches.update(p['incorrectmatches'])
+        cmatch.update(p['correctmatches'])
+        #print(p['supportdiff'])
+
+    #for p in cmatch:
+    #    path = trans.loc[0]['imagepath']
+    #    img = cv2.imread(path)
+    #    img = cv2.resize(img, (256, 256))
+    #    label = trans.loc[0]['label']
+    #    pred = trans.loc[0]['predicted']
+    #    outs = model.predict(np.asarray([img]))
+    #    print(1)
+
+    batchindex = 0
+    #for imagebatch, labelbatch in valds:
+    for index in matches:
+        img = cv2.imread(trans.loc[index]['imagepath'])
+        img = cv2.resize(img, (256, 256))
+        #outs = model.predict(np.asarray([img]))
+        h, _ = mlutil.heatmap(np.asarray([img]), model, 'activation_3', trans.loc[index]['predicted'])
+        heatout = mlutil.overlayHeatmap(np.asarray([img]), h)
+        cv2.imwrite('sessionimg/heat_' + str(index).zfill(5) + '_' + str(trans.loc[index]['label']) + '_' + str(trans.loc[index]['predicted']) + '.png', heatout)
+        cv2.imwrite('sessionimg/heat_' + str(index).zfill(5) + '_' + str(trans.loc[index]['label']) + '_' + str(trans.loc[index]['predicted']) + '_orig.png', img)
+
+    print(1)
+
+
+trainds = image_dataset_from_directory('images_large/train', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=False)
+valds = mlutil.load_from_directory('images_large/val', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
 #trainds = trainds.prefetch(tf_data.AUTOTUNE)
 #valds = valds.prefetch(tf_data.AUTOTUNE)
 model = models.load_model('largeimage.keras', compile=True)
@@ -71,6 +106,7 @@ lastlayer = ['activation_3']
 #trans.to_csv('test.csv')
 
 trans = pd.read_csv('test.csv', index_col='index')
+evalMatches(model, trans)
 
 # Drop columns that are all zero
 droplist = []
@@ -96,14 +132,17 @@ for c in trans.columns:
 bds = pats.discretize(trans, cutpoints)
 bdf = pats.binarize(bds, cutpoints)
 
-#bdf.loc[:, 'iscorrect'] = pd.Series(iscorrect, index=bdf.index)
-bdf['iscorrect'] = iscorrect
 
+bdf['iscorrect'] = iscorrect
 correct = bdf[bdf['iscorrect']]
 incorrect = bdf[~bdf['iscorrect']]
-correct.drop('iscorrect', axis=1, inplace=True)
-incorrect.drop('iscorrect', axis=1, inplace=True)
-pats.mineContrastPatterns(correct, incorrect)
+correct = correct[correct.columns[:-1]]
+incorrect = incorrect[incorrect.columns[:-1]]
+#cpats = pats.mineContrastPatterns(correct, incorrect, 0.8, 1.3)
+#with open('patterns.pkl', 'wb') as f:
+#    pickle.dump(cpats, f)
+
+
 
 ranges = mlutil.getLayerOutputRange(model, ['activation', 'activation_1', 'prediction'], valds)
 
