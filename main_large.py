@@ -35,24 +35,89 @@ def buildModel():
     return model
 
 
-def generateTrans(model, images, labels, class_names, outputlayers):
-    labels = labels.squeeze()
-    selectedindexes = filterLabels(labels, class_names, ['church', 'golf_ball'])
-    selectedimages = [images[i] for i in selectedindexes]
-    selectedlabels = [labels[i] for i in selectedindexes]
+def findContrast():
+    trans = pd.read_csv('session/trans.csv', index_col='index')
 
-    outputlayers = ['activation', 'prediction']
-    lastlayer = 'activation_2'
+    # Drop columns that are all close to zero
+    droplist = []
+    for c in trans.columns[:-2]:
+        mx = trans[c].max()
+        if mx <= 0.05:
+            droplist.append(c)
+    trans.drop(droplist, axis=1, inplace=True)
+    istarget = ((trans['label'] == 0) & (trans['predicted'] != trans['label'])).to_numpy()
+    trans.drop(['predicted', 'label', 'imagepath'], axis=1, inplace=True)
 
-    franges = mlutil.getLayerOutputRange(model, outputlayers, images)
-    trans = mlutil.featuresToDataFrame(model, outputlayers, lastlayer, franges, selectedindexes, selectedimages,
-                                       selectedlabels)
-    t = trans[trans['predicted'].isin([di, ci])]
-    t.to_csv('trans.csv')
+    # Discretize dataset
+    cutpoints = []
+    infolist = []
+    for c in trans.columns:
+        print(c)
+        vals = trans[c].to_numpy()
+        cuts, info = pats.cutPoints(vals, istarget)
+        cutpoints.append(cuts)
+        infolist.append(info)
+    bds = pats.discretize(trans, cutpoints)
+    bdf = pats.binarize(bds, cutpoints)
+
+    bdf['istarget'] = istarget
+    target = bdf[bdf['istarget']]
+    other = bdf[~bdf['istarget']]
+    target = target[target.columns[:-1]]
+    other = other[other.columns[:-1]]
+    cpats = pats.mineContrastPatterns(target, other, 0.8, 1.3)
+    print(1)
+
+
+def generateTrans(model, images, outputlayers):
+
+    # Get min/max ranges for all feature maps over dataset
+    #franges = None
+    #for imagebatch, labelbatch in images:
+    #    franges = mlutil.getLayerOutputRange(model, outputlayers, imagebatch, franges)
+    #with open('session/franges.pkl', 'wb') as f:
+    #    pickle.dump(franges, f)
+
+    # Get model outputs as transaction dataset
+    #trans = mlutil.featuresToDataFrame(model, outputlayers, images)
+    #trans.to_csv('session/trans.csv')
+    trans = pd.read_csv('session/trans.csv', index_col='index')
+
+    # Drop columns that are all close to zero
+    droplist = []
+    for c in trans.columns[:-2]:
+        mx = trans[c].max()
+        if mx <= 0.05:
+            droplist.append(c)
+    trans.drop(droplist, axis=1, inplace=True)
+
+    iscorrect = (trans['predicted'] == trans['label']).to_numpy()
+    trans.drop(['predicted', 'label', 'imagepath'], axis=1, inplace=True)
+
+    # Discretize dataset
+    cutpoints = []
+    infolist = []
+    for c in trans.columns:
+        print(c)
+        vals = trans[c].to_numpy()
+        cuts, info = pats.cutPoints(vals, iscorrect)
+        cutpoints.append(cuts)
+        infolist.append(info)
+    bds = pats.discretize(trans, cutpoints)
+    bdf = pats.binarize(bds, cutpoints)
+
+    bdf['iscorrect'] = iscorrect
+    correct = bdf[bdf['iscorrect']]
+    incorrect = bdf[~bdf['iscorrect']]
+    correct = correct[correct.columns[:-1]]
+    incorrect = incorrect[incorrect.columns[:-1]]
+    cpats = pats.mineContrastPatterns(incorrect, correct, 0.8, 1.3)
+    with open('session/patterns.pkl', 'wb') as f:
+        pickle.dump(cpats, f)
 
 
 def evalMatches(model, trans):
-    with open('patterns.pkl', 'rb') as f:
+    with open('session/patterns.pkl', 'rb') as f:
         cpats = pickle.load(f)
     matches = set()
     cmatches = set()
@@ -62,86 +127,38 @@ def evalMatches(model, trans):
         #print(p['supportdiff'])
 
     incorrect = trans[trans['predicted'] != trans['label']]
-    with open('franges.pkl', 'rb') as f:
+    with open('session/franges.pkl', 'rb') as f:
         franges = pickle.load(f)
 
-    #plot.renderFeatureMaps(incorrect.loc[[1, 3, 4], 'imagepath'], model, ['activation', 'activation_1', 'activation_2', 'activation_3'])
+    plot.renderFeatureMaps(incorrect.loc[[1, 3, 4], 'imagepath'], model, ['activation', 'activation_1', 'activation_2', 'activation_3'], franges)
     plot.renderHeatmaps(incorrect.loc[[1, 3, 4], ['imagepath', 'predicted']], model, 'activation_3', False)
 
     print(1)
 
 
-trainds = image_dataset_from_directory('images_large/train', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=False)
+trainds = mlutil.load_from_directory('images_large/train', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
 valds = mlutil.load_from_directory('images_large/val', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
-#trainds = trainds.prefetch(tf_data.AUTOTUNE)
-#valds = valds.prefetch(tf_data.AUTOTUNE)
 model = models.load_model('largeimage.keras', compile=True)
 #model = buildModel()
 #model.fit(trainds, epochs=10, validation_data=valds)
 #model.save('largeimage.keras')
 
-#outs = model.predict(valds)
-#valds = valds.take(1)
-franges = None
-batchnum = 1
-outputlayers = ['activation', 'activation_1', 'prediction']
+outputlayers = ['activation', 'activation_1', 'activation_2', 'activation_3', 'prediction']
 lastlayer = ['activation_3']
-#for image, label in valds:
-#    print(batchnum)
-#    batchnum += 1
-#    franges = mlutil.getLayerOutputRange(model, outputlayers, image, franges)
+findContrast()
+trans = pd.read_csv('session/trans.csv', index_col='index')
+#generateTrans(model, valds, ['activation', 'activation_1'])
+#evalMatches(model, trans)
 
-#trans = mlutil.featuresToDataFrame(model, outputlayers, valds)
-#trans = (trans - trans.min()) / (trans.max() - trans.min())
-#trans.to_csv('test.csv')
+with open('session/patterns.pkl', 'rb') as f:
+    cpats = pickle.load(f)
 
-trans = pd.read_csv('test.csv', index_col='index')
-evalMatches(model, trans)
-
-# Drop columns that are all zero
-droplist = []
-for c in trans.columns[:-2]:
-    mx = trans[c].max()
-    if mx <= 0.05:
-        droplist.append(c)
-print(len(trans.columns))
-trans.drop(droplist, axis=1, inplace=True)
-print(len(trans.columns))
-
-iscorrect = (trans['predicted'] == trans['label']).to_numpy()
-cutpoints = []
-infolist = []
-trans.drop(['predicted', 'label', 'imagepath'], axis=1, inplace=True)
-
-for c in trans.columns:
-    print(c)
-    vals = trans[c].to_numpy()
-    cuts, info = pats.cutPoints(vals, iscorrect)
-    cutpoints.append(cuts)
-    infolist.append(info)
-bds = pats.discretize(trans, cutpoints)
-bdf = pats.binarize(bds, cutpoints)
-
-
-bdf['iscorrect'] = iscorrect
-correct = bdf[bdf['iscorrect']]
-incorrect = bdf[~bdf['iscorrect']]
-correct = correct[correct.columns[:-1]]
-incorrect = incorrect[incorrect.columns[:-1]]
-#cpats = pats.mineContrastPatterns(correct, incorrect, 0.8, 1.3)
-#with open('patterns.pkl', 'wb') as f:
-#    pickle.dump(cpats, f)
-
-
-
-ranges = mlutil.getLayerOutputRange(model, ['activation', 'activation_1', 'prediction'], valds)
-
-for e in valds:
-    print(e[0][0])
-    print(1)
-
-
-model = models.load_model('largeimage.keras', compile=True)
-
-
+print(1)
+#newpats = []
+#for c in cpats:
+#    p = {'pattern': c['pattern'], 'targetsupport': c['incorrectsupport'], 'othersupport': c['correctsupport'],
+#         'targetmatches': c['incorrectmatches'], 'othermatches': c['correctmatches'], 'supportdiff': c['supportdiff'], 'supportratio': c['supportratio']}
+#    newpats.append(p)
+#with open('session/patterns.pkl', 'wb') as f:
+#    pickle.dump(newpats, f)
 print(1)

@@ -89,7 +89,69 @@ def binarize(df, cutpoints):
     return bdf
 
 
-def mineContrastPatterns(correct, incorrect, minsup, supratio):
+def mineContrastPatterns(target, other, minsup, supratio):
+    print('start mining')
+
+    # Write transactions to temp file
+    lookup = {}
+    for i in range(len(target.columns)):
+        lookup[target.columns[i]] = i
+    with open('.trans.csv', 'w') as outfile:
+        writer = csv.writer(outfile, delimiter=' ')
+        for index, row in target.iterrows():
+            itemset = [lookup[item] for item in list(compress(target.columns, row))]
+            writer.writerow(itemset)
+
+    # Perform pattern mining on 'target' dataset
+    fpclose = spmf.Spmf('FPClose', input_filename='.trans.csv', output_filename='.patterns.csv', arguments=[minsup, 5])
+    fpclose.run()
+    fpclose.parse_output()
+    patlist = []
+    for p in fpclose.patterns_:
+        items = p[0].split()
+        pat = frozenset([target.columns[int(itm)] for itm in items[:-2]])
+        sup = int(items[-1]) / float(len(target))
+        patlist.append({'pattern': pat, 'targetsupport': sup, 'othermatches': [], 'targetmatches': []})
+
+    # Convert transactions to sets for pattern matching
+    othersets = []
+    for index, row in other.iterrows():
+        itemset = frozenset(compress(other.columns, row))
+        othersets.append({'index': index, 'itemset': itemset})
+    targetsets = []
+    for index, row in target.iterrows():
+        itemset = frozenset(compress(target.columns, row))
+        targetsets.append({'index': index, 'itemset': itemset})
+
+    # Find pattern support in both datasets
+    i = 0
+    for p in patlist:
+        print(str(i) + '/' + str(len(patlist)))
+        i += 1
+        count = 0
+        for c in othersets:
+            if p['pattern'].issubset(c['itemset']):
+                p['othermatches'].append(c['index'])
+                count += 1
+        for c in targetsets:
+            if p['pattern'].issubset(c['itemset']):
+                p['targetmatches'].append(c['index'])
+        p['othersupport'] = count / float(len(othersets))
+        p['supportdiff'] = p['targetsupport'] - p['othersupport']
+        p['supportratio'] = p['targetsupport'] / p['othersupport'] if p['othersupport'] > 0.0 else -1.0
+
+    # Prune low support/contrast patterns
+    #patlist.sort(key=lambda x: x['targetsupport'] - x['othersupport'], reverse=True)
+    patlist.sort(key=lambda x: x['supportratio'], reverse=False)
+    selectedpats = []
+    for p in patlist:
+        if p['supportratio'] >= supratio:
+            print(str(p['targetsupport'] - p['othersupport']) + ', ' + str(p['othersupport']) + ', ' + str(p['targetsupport']) + ', ' + str(p['supportratio']) + ', ' + str(p['pattern']))
+            selectedpats.append(p)
+    return selectedpats
+
+
+def mineContrastPatterns2(correct, incorrect, minsup, supratio):
     print('start mining')
 
     # Write transactions to temp file
