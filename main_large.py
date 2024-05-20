@@ -8,7 +8,10 @@ import keras
 import pickle
 import pandas as pd
 import cv2
+import os
+import shutil
 import mlutil
+import plot
 import patterns as pats
 
 
@@ -52,31 +55,18 @@ def evalMatches(model, trans):
     with open('patterns.pkl', 'rb') as f:
         cpats = pickle.load(f)
     matches = set()
-    cmatch = set()
+    cmatches = set()
     for p in cpats[:10]:
         matches.update(p['incorrectmatches'])
-        cmatch.update(p['correctmatches'])
+        cmatches.update(p['correctmatches'])
         #print(p['supportdiff'])
 
-    #for p in cmatch:
-    #    path = trans.loc[0]['imagepath']
-    #    img = cv2.imread(path)
-    #    img = cv2.resize(img, (256, 256))
-    #    label = trans.loc[0]['label']
-    #    pred = trans.loc[0]['predicted']
-    #    outs = model.predict(np.asarray([img]))
-    #    print(1)
+    incorrect = trans[trans['predicted'] != trans['label']]
+    with open('franges.pkl', 'rb') as f:
+        franges = pickle.load(f)
 
-    batchindex = 0
-    #for imagebatch, labelbatch in valds:
-    for index in matches:
-        img = cv2.imread(trans.loc[index]['imagepath'])
-        img = cv2.resize(img, (256, 256))
-        #outs = model.predict(np.asarray([img]))
-        h, _ = mlutil.heatmap(np.asarray([img]), model, 'activation_3', trans.loc[index]['predicted'])
-        heatout = mlutil.overlayHeatmap(np.asarray([img]), h)
-        cv2.imwrite('sessionimg/heat_' + str(index).zfill(5) + '_' + str(trans.loc[index]['label']) + '_' + str(trans.loc[index]['predicted']) + '.png', heatout)
-        cv2.imwrite('sessionimg/heat_' + str(index).zfill(5) + '_' + str(trans.loc[index]['label']) + '_' + str(trans.loc[index]['predicted']) + '_orig.png', img)
+    #plot.renderFeatureMaps(incorrect.loc[[1, 3, 4], 'imagepath'], model, ['activation', 'activation_1', 'activation_2', 'activation_3'])
+    plot.renderHeatmaps(incorrect.loc[[1, 3, 4], ['imagepath', 'predicted']], model, 'activation_3', False)
 
     print(1)
 

@@ -2,10 +2,82 @@ import cv2
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 import math
+import os
+import shutil
 import mlutil
 
 
-def renderFeatureMaps(mapinfo, pattern=None):
+def renderFeatureMaps(images, model, outputlayers, franges=None):
+    layermodel = mlutil.makeLayerOutputModel(model, outputlayers)
+
+    # Load images
+    imagedata = []
+    for index, imagepath in images.items():
+        img = cv2.imread(imagepath)
+        img = cv2.resize(img, (256, 256))
+        imagedata.append(img)
+
+    outs = layermodel.predict(np.asarray(imagedata))
+
+    # Render features maps for each image
+    for i in range(len(images)):
+        index = images.index.values[i]
+
+        # Initialize output directory
+        imagedir = 'session/' + str(index).zfill(5)
+        outpath = imagedir + '/features'
+        if os.path.exists(outpath):
+            shutil.rmtree(outpath)
+        if not os.path.exists(imagedir):
+            os.makedirs(imagedir)
+        os.makedirs(outpath)
+
+        # Iterate each layer/fmap
+        for oi in range(len(outs) - 1):
+            for fi in range(outs[oi].shape[-1]):
+                fmap = outs[oi][i, :, :, fi]
+
+                # Calculate min/max for scaling
+                if franges is None:
+                    f_min, f_max = fmap.min(), fmap.max()
+                else:
+                    f_min, f_max = franges[oi][fi][0], franges[oi][fi][1]
+
+                # Scale image to 0-255
+                if f_max == 0.0:
+                    scaled = fmap
+                else:
+                    scaled = np.interp(fmap, [f_min, f_max], [0, 255]).astype(np.uint8)
+
+                # Render feature map
+                filename = 'feature-' + str(index).zfill(5) + '-' + outputlayers[oi] + '-' + str(fi).zfill(4) + '.png'
+                cv2.imwrite(outpath + '/' + filename, scaled)
+
+
+def renderHeatmaps(images, model, lastconvlayer, useimagedir=True):
+
+    for index, row in images.iterrows():
+        imagepath = row['imagepath']
+        label = row.iloc[-1]
+
+        # Initialize output directory
+        if useimagedir:
+            imagedir = 'session/' + str(index).zfill(5)
+            if not os.path.exists(imagedir):
+                os.makedirs(imagedir)
+        else:
+            imagedir = 'session/'
+
+        # Render heatmap
+        img = cv2.imread(imagepath)
+        img = cv2.resize(img, (256, 256))
+        h, _ = mlutil.heatmap(np.asarray([img]), model, lastconvlayer, label)
+        heatout = mlutil.overlayHeatmap(np.asarray([img]), h)
+        cv2.imwrite(imagedir + '/heat-' + str(index).zfill(5) + '.png', heatout)
+        cv2.imwrite(imagedir + '/image-' + str(index).zfill(5) + '.png', img)
+
+
+def renderFeatureMaps2(mapinfo, pattern=None):
     fh = 30#maps.shape[0]
     fw = 30#maps.shape[1]
     maps = mapinfo['output']
