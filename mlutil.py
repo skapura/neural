@@ -110,12 +110,13 @@ def getLayerOutputRange(model, layernames, images, franges=None):
     layermodel = makeLayerOutputModel(model, layernames)
 
     class LayerCallback(callbacks.Callback):
-        ranges = []
+        ranges = {'range': [], 'name': {}}
 
         def __init__(self, model, franges):
             if franges is None:
-                for l in model.output_shape:
-                    self.ranges.append([(9999.0, -9999.0) for _ in range(l[-1])])
+                for n, l in zip(model.output_names, model.output_shape):
+                    self.ranges['range'].append([(9999.0, -9999.0) for _ in range(l[-1])])
+                    self.ranges['name'][n] = self.ranges['range'][-1] #len(self.ranges) - 1
             else:
                 self.ranges = franges
             super(callbacks.Callback, self).__init__()
@@ -128,8 +129,8 @@ def getLayerOutputRange(model, layernames, images, franges=None):
                     fmaps = outs[i][:, :, :, fi] if len(outs[i].shape) == 4 else outs[i]
                     minval = tf.reduce_min(fmaps).numpy()
                     maxval = tf.reduce_max(fmaps).numpy()
-                    c = self.ranges[i][fi]
-                    self.ranges[i][fi] = (min(c[0], minval), max(c[1], maxval))
+                    c = self.ranges['range'][i][fi]
+                    self.ranges['range'][i][fi] = (min(c[0], minval), max(c[1], maxval))
 
     layerinfo = LayerCallback(layermodel, franges)
     layermodel.predict(images, callbacks=[layerinfo])

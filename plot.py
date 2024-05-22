@@ -41,7 +41,7 @@ def renderFeatureMaps(images, model, outputlayers, franges=None):
                 if franges is None:
                     f_min, f_max = fmap.min(), fmap.max()
                 else:
-                    f_min, f_max = franges[oi][fi][0], franges[oi][fi][1]
+                    f_min, f_max = franges['range'][oi][fi][0], franges['range'][oi][fi][1]
 
                 # Scale image to 0-255
                 if f_max == 0.0:
