@@ -138,7 +138,7 @@ def evalMatches(model, trans):
     print(1)
 
 
-def renderFeatureActivations(index, image, model, fmapname, franges=None):
+def renderFeatureActivation(image, model, fmapname, franges=None):
 
     # Get receptive layer info
     tokens = fmapname.split('-')
@@ -181,10 +181,69 @@ def renderFeatureActivations(index, image, model, fmapname, franges=None):
                         mask[yf, xf] = (0, 0, v)
 
     combined = cv2.addWeighted(img, 1.0, mask, 1.0, 0)
+    return combined, mask, img
 
-    cv2.imwrite('session/test.png', combined)
-    cv2.imwrite('session/test2.png', mask)
-    cv2.imwrite('session/test3.png', img)
+
+def renderPattern(patternid, pattern, model, trans, indexlist, franges=None):
+    franges = None
+    # Initialize output directory
+    imagedir = 'session/'
+    outpath = imagedir + '/patterns/' + str(patternid).zfill(4)
+    if os.path.exists(outpath):
+        shutil.rmtree(outpath)
+    if not os.path.exists(imagedir):
+        os.makedirs(imagedir)
+    if not os.path.exists(imagedir + '/patterns'):
+        os.makedirs(imagedir + '/patterns')
+    os.makedirs(outpath)
+
+    layers = list(set([t.split('-')[0] for t in pattern['pattern']]))
+    layers.sort()
+    layermodel = mlutil.makeLayerOutputModel(model, layers)
+
+    for index in indexlist:
+        path = trans.loc[index, 'imagepath']
+        image = cv2.imread(path)
+        image = cv2.resize(image, (256, 256))
+        outs = layermodel.predict(np.asarray([image]))
+        for p in pattern['pattern']:
+            t = p.split('-')
+            layername = t[0]
+            t = t[1].split('_')
+            fmapindex = int(t[0])
+            if t[1] == '1':     # Only output if this is an activated feature
+                layerindex = layers.index(layername)
+                fmap = outs[layerindex][0, :, :, fmapindex]
+                receptivelayers = mlutil.getConvLayerSubset(model, layername)
+
+                # Calculate min/max for scaling
+                if franges is None:
+                    f_min, f_max = fmap.min(), fmap.max()
+                else:
+                    f_min, f_max = franges['name'][layername][fmapindex][0], franges['name'][layername][fmapindex][1]
+
+                # Scale image to 0-255
+                if f_max == 0.0:
+                    scaled = fmap
+                else:
+                    scaled = np.interp(fmap, [f_min, f_max], [0, 255]).astype(np.uint8)
+
+                # Create receptive field mask
+                mask = np.zeros((image.shape[0], image.shape[1], 3), np.uint8)
+                for y in range(scaled.shape[0]):
+                    for x in range(scaled.shape[1]):
+                        v = scaled[y, x]
+                        xfield, yfield = mlutil.calcReceptiveField(x, y, receptivelayers)
+                        for xf in range(xfield[0], xfield[1] + 1):
+                            for yf in range(yfield[0], yfield[1] + 1):
+                                if v > 0:
+                                    mask[yf, xf] = (0, 0, v)
+
+                combined = cv2.addWeighted(image, 1.0, mask, 1.0, 0)
+                filepath = 'pattern-' + str(index).zfill(5) + '-' + layername + '-' + str(fmapindex)
+                cv2.imwrite(outpath + '/' + filepath + '-activation.png', combined)
+                cv2.imwrite(outpath + '/' + filepath + '-mask.png', mask)
+
     print(1)
 
 
@@ -208,12 +267,22 @@ with open('session/franges.pkl', 'rb') as f:
 with open('session/patterns.pkl', 'rb') as f:
     cpats = pickle.load(f)
 
-
-path = trans.loc[1, 'imagepath']
-#sel = trans.loc[:3]['imagepath']
+index = 1
+feat = 'activation_1-54'
+path = trans.loc[index, 'imagepath']
+t = feat.split('-')
+layername = t[0]
+fmapindex = int(t[1])
 img = cv2.imread(path)
 img = cv2.resize(img, (256, 256))
-renderFeatureActivations(1, img, model, 'activation_1-54', franges)
+#renderPattern(index, cpats[index], model, trans, cpats[index]['targetmatches'][:4], franges)
+plot.renderHeatmaps(trans.loc[[2, 7, 17, 19], ['imagepath', 'predicted']], model, 'activation_3', False)
+
+
+combined, mask, _ = renderFeatureActivation(img, model, feat, franges)
+basepath = 'session/' + str(index).zfill(5) + '/features/feature-' + str(index).zfill(5) + '-' + layername + '-' + str(fmapindex).zfill(4) + '-'
+cv2.imwrite(basepath + 'activation.png', combined)
+cv2.imwrite(basepath + 'mask.png', mask)
 print(1)
 #newpats = []
 #for c in cpats:
