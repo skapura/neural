@@ -211,3 +211,15 @@ def mineContrastPatterns2(correct, incorrect, minsup, supratio):
             print(str(p['incorrectsupport'] - p['correctsupport']) + ', ' + str(p['correctsupport']) + ', ' + str(p['incorrectsupport']) + ', ' + str(p['supportratio']) + ', ' + str(p['pattern']))
             selectedpats.append(p)
     return selectedpats
+
+
+def pats2csv(pats, filepath):
+    with open(filepath, 'w') as f:
+        writer = csv.writer(f, delimiter=',')
+        writer.writerow(['index', 'targetsupport', 'othersupport', 'supportdiff', 'supportratio', 'pattern'])
+        for pi in range(len(pats)):
+            p = pats[pi]
+            r = [pi, p['targetsupport'], p['othersupport'], p['supportdiff'], p['supportratio']]
+            for item in p['pattern']:
+                r.append(item)
+            writer.writerow(r)
