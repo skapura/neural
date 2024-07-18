@@ -54,27 +54,29 @@ def renderFeatureMaps(images, model, outputlayers, franges=None):
                 cv2.imwrite(outpath + '/' + filename, scaled)
 
 
-def renderHeatmaps(images, model, lastconvlayer, useimagedir=True):
+def renderHeatmaps(images, model, lastconvlayer, outpath='session/'):
+    """
+    :param images: DataFrame(imagepath, predicted_label)
+    :param model:
+    :param lastconvlayer:
+    :param outpath:
+    :return:
+    """
 
     for index, row in images.iterrows():
         imagepath = row['imagepath']
         label = row.iloc[-1]
 
-        # Initialize output directory
-        if useimagedir:
-            imagedir = 'session/' + str(index).zfill(5)
-            if not os.path.exists(imagedir):
-                os.makedirs(imagedir)
-        else:
-            imagedir = 'session/'
+        if not os.path.exists(outpath):
+            os.makedirs(outpath)
 
         # Render heatmap
         img = cv2.imread(imagepath)
         img = cv2.resize(img, (256, 256))
         h, _ = mlutil.heatmap(np.asarray([img]), model, lastconvlayer, label)
         heatout = mlutil.overlayHeatmap(np.asarray([img]), h)
-        cv2.imwrite(imagedir + '/heat-' + str(index).zfill(5) + '.png', heatout)
-        cv2.imwrite(imagedir + '/image-' + str(index).zfill(5) + '.png', img)
+        cv2.imwrite(outpath + '/heat-' + str(index).zfill(5) + '.png', heatout)
+        cv2.imwrite(outpath + '/image-' + str(index).zfill(5) + '.png', img)
 
 
 
@@ -124,7 +126,8 @@ def renderFeatureActivation(image, model, fmapname, franges=None):
     return combined, mask, image
 
 
-def renderPattern(patternid, pattern, model, trans, indexlist, franges=None):
+def renderPattern(patternid, pattern, model, indexlist):
+    franges = None
 
     # Initialize output directory
     imagedir = 'session/'
@@ -139,6 +142,7 @@ def renderPattern(patternid, pattern, model, trans, indexlist, franges=None):
 
     layers = list(set([t.split('-')[0] for t in pattern['pattern']]))
     layers.sort()
+    layers.append('prediction')
     layermodel = mlutil.makeLayerOutputModel(model, layers)
 
     for index in indexlist:
@@ -146,6 +150,10 @@ def renderPattern(patternid, pattern, model, trans, indexlist, franges=None):
         image = cv2.imread(path)
         image = cv2.resize(image, (256, 256))
         outs = layermodel.predict(np.asarray([image]))
+        #label = np.argmax(outs[-1])
+        #_, himg = mlutil.heatmap(np.asarray([image]), model, 'activation_3', label)
+        #himg[himg < .5] = 0
+        #himg[himg >= .5] = 1
         for p in pattern['pattern']:
             t = p.split('-')
             layername = t[0]
@@ -179,9 +187,92 @@ def renderPattern(patternid, pattern, model, trans, indexlist, franges=None):
                                 if v > 0:
                                     mask[yf, xf] = (0, 0, v)
 
+                #hmask = np.zeros((image.shape[0], image.shape[1], 3), np.uint8)
+                #hmask[:, :, 0] = himg
+                #hmask[:, :, 1] = himg
+                #hmask[:, :, 2] = himg
+                #mask *= hmask
                 combined = cv2.addWeighted(image, 1.0, mask, 1.0, 0)
-                filepath = 'pattern-' + str(index).zfill(5) + '-' + layername + '-' + str(fmapindex)
+                #filepath = 'pattern-' + str(index).zfill(5) + '-' + layername + '-' + str(fmapindex)
+                filepath = 'pattern-' + layername + '-' + str(fmapindex) + '-' + str(index).zfill(5)
                 cv2.imwrite(outpath + '/' + filepath + '-activation.png', combined)
+                print(filepath)
+                cv2.imwrite(outpath + '/' + filepath + '-mask.png', mask)
+
+
+def renderPattern2(patternid, pattern, model, trans, indexlist, franges=None):
+    franges = None
+    # Initialize output directory
+    imagedir = 'session/'
+    outpath = imagedir + '/patterns/' + str(patternid).zfill(4)
+    if os.path.exists(outpath):
+        shutil.rmtree(outpath)
+    if not os.path.exists(imagedir):
+        os.makedirs(imagedir)
+    if not os.path.exists(imagedir + '/patterns'):
+        os.makedirs(imagedir + '/patterns')
+    os.makedirs(outpath)
+
+    info = trans.loc[indexlist, ['predicted', 'label', 'imagepath']]
+    info.to_csv(outpath + '/info.csv')
+
+    layers = list(set([t.split('-')[0] for t in pattern['pattern']]))
+    layers.sort()
+    layers.append('prediction')
+    layermodel = mlutil.makeLayerOutputModel(model, layers)
+
+    for index in indexlist:
+        path = trans.loc[index, 'imagepath']
+        image = cv2.imread(path)
+        image = cv2.resize(image, (256, 256))
+        outs = layermodel.predict(np.asarray([image]))
+        #label = np.argmax(outs[-1])
+        #_, himg = mlutil.heatmap(np.asarray([image]), model, 'activation_3', label)
+        #himg[himg < .5] = 0
+        #himg[himg >= .5] = 1
+        for p in pattern['pattern']:
+            t = p.split('-')
+            layername = t[0]
+            t = t[1].split('_')
+            fmapindex = int(t[0])
+            if t[1] == '1':     # Only output if this is an activated feature
+                layerindex = layers.index(layername)
+                fmap = outs[layerindex][0, :, :, fmapindex]
+                receptivelayers = mlutil.getConvLayerSubset(model, layername)
+
+                # Calculate min/max for scaling
+                if franges is None:
+                    f_min, f_max = fmap.min(), fmap.max()
+                else:
+                    f_min, f_max = franges['name'][layername][fmapindex][0], franges['name'][layername][fmapindex][1]
+
+                # Scale image to 0-255
+                if f_max == 0.0:
+                    scaled = fmap
+                else:
+                    scaled = np.interp(fmap, [f_min, f_max], [0, 255]).astype(np.uint8)
+
+                # Create receptive field mask
+                mask = np.zeros((image.shape[0], image.shape[1], 3), np.uint8)
+                for y in range(scaled.shape[0]):
+                    for x in range(scaled.shape[1]):
+                        v = scaled[y, x]
+                        xfield, yfield = mlutil.calcReceptiveField(x, y, receptivelayers)
+                        for xf in range(xfield[0], xfield[1] + 1):
+                            for yf in range(yfield[0], yfield[1] + 1):
+                                if v > 0:
+                                    mask[yf, xf] = (0, 0, v)
+
+                #hmask = np.zeros((image.shape[0], image.shape[1], 3), np.uint8)
+                #hmask[:, :, 0] = himg
+                #hmask[:, :, 1] = himg
+                #hmask[:, :, 2] = himg
+                #mask *= hmask
+                combined = cv2.addWeighted(image, 1.0, mask, 1.0, 0)
+                #filepath = 'pattern-' + str(index).zfill(5) + '-' + layername + '-' + str(fmapindex)
+                filepath = 'pattern-' + layername + '-' + str(fmapindex) + '-' + str(index).zfill(5)
+                cv2.imwrite(outpath + '/' + filepath + '-activation.png', combined)
+                print(filepath)
                 cv2.imwrite(outpath + '/' + filepath + '-mask.png', mask)
 
 

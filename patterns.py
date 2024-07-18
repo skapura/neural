@@ -89,6 +89,51 @@ def binarize(df, cutpoints):
     return bdf
 
 
+def makeBinaryDataset(ds):
+
+    # Drop columns that are all close to zero
+    droplist = []
+    for c in ds.columns[:-2]:
+        mx = ds[c].max()
+        if mx <= 0.05:
+            droplist.append(c)
+    ds.drop(droplist, axis=1, inplace=True)
+
+    iscorrect = (ds['predicted'] == ds['label']).to_numpy()
+    othercols = ds[['predicted', 'label', 'imagepath']]
+    ds.drop(['predicted', 'label', 'imagepath'], axis=1, inplace=True)
+
+    # Discretize dataset
+    cutpoints = []
+    infolist = []
+    for c in ds.columns:
+        print('discretize: ' + c)
+        vals = ds[c].to_numpy()
+        cuts, info = cutPoints(vals, iscorrect)
+        cutpoints.append(cuts)
+        infolist.append(info)
+    bds = discretize(ds, cutpoints)
+    bdf = binarize(bds, cutpoints)
+    bdf = bdf.join(othercols)
+    return bdf, cutpoints
+
+
+def divideByPrediction(ds, label, predicted=None, activatedonly=False):
+    cols = [c for c in ds.columns if '_' in c]
+    ds = ds.loc[ds['label'] == label]
+    correct = ds.loc[ds['predicted'] == label, cols]
+    if predicted is None:
+        incorrect = ds.loc[~(ds['predicted'] == label), cols]
+    else:
+        incorrect = ds.loc[ds['predicted'].isin(predicted), cols]
+    if activatedonly:
+        correct = correct[[c for c in correct.columns if c.endswith('_1')]]
+        incorrect = incorrect[[c for c in incorrect.columns if c.endswith('_1')]]
+    return correct, incorrect
+
+
+
+
 def mineContrastPatterns(target, other, minsup, supratio):
     print('start mining')
 
@@ -141,13 +186,13 @@ def mineContrastPatterns(target, other, minsup, supratio):
         p['supportratio'] = p['targetsupport'] / p['othersupport'] if p['othersupport'] > 0.0 else -1.0
 
     # Prune low support/contrast patterns
-    #patlist.sort(key=lambda x: x['targetsupport'] - x['othersupport'], reverse=True)
-    patlist.sort(key=lambda x: x['supportratio'], reverse=False)
+    patlist.sort(key=lambda x: x['supportratio'], reverse=True)
     selectedpats = []
     for p in patlist:
         if p['supportratio'] >= supratio:
-            print(str(p['targetsupport'] - p['othersupport']) + ', ' + str(p['othersupport']) + ', ' + str(p['targetsupport']) + ', ' + str(p['supportratio']) + ', ' + str(p['pattern']))
             selectedpats.append(p)
+    for p in reversed(selectedpats):
+        print(str(p['targetsupport'] - p['othersupport']) + ', ' + str(p['othersupport']) + ', ' + str(p['targetsupport']) + ', ' + str(p['supportratio']) + ', ' + str(p['pattern']))
     return selectedpats
 
 
@@ -207,6 +252,7 @@ def mineContrastPatterns2(correct, incorrect, minsup, supratio):
     patlist.sort(key=lambda x: x['incorrectsupport'] - x['correctsupport'], reverse=True)
     selectedpats = []
     for p in patlist:
+        print(p['supportratio'])
         if p['supportratio'] >= supratio:
             print(str(p['incorrectsupport'] - p['correctsupport']) + ', ' + str(p['correctsupport']) + ', ' + str(p['incorrectsupport']) + ', ' + str(p['supportratio']) + ', ' + str(p['pattern']))
             selectedpats.append(p)

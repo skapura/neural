@@ -4,6 +4,7 @@ from keras.src.utils import dataset_utils
 from keras.src.utils import image_utils
 from keras.src.utils.image_dataset_utils import paths_and_labels_to_dataset
 from keras.src.backend.config import standardize_data_format
+from sklearn.metrics import confusion_matrix
 import tensorflow as tf
 import cv2
 import pandas as pd
@@ -96,10 +97,13 @@ def heatmap(img_array, model, last_conv_layer_name, pred_index=None):
 def overlayHeatmap(image, heat, alpha=0.4):
     (w, h) = (image.shape[2], image.shape[1])
     heatmap = cv2.resize(heat, (w, h))
-    numer = heatmap - np.min(heatmap)
-    denom = (heatmap.max() - heatmap.min()) + 0
-    heatmap = numer / denom
-    heatmap = (heatmap * 255).astype("uint8")
+    if heatmap.max() == 0.0:
+        heatmap = heatmap.astype("uint8")
+    else:
+        numer = heatmap - np.min(heatmap)
+        denom = (heatmap.max() - heatmap.min()) + 0
+        heatmap = numer / denom
+        heatmap = (heatmap * 255).astype("uint8")
     colormap = cv2.COLORMAP_VIRIDIS
     heatmap = cv2.applyColorMap(heatmap, colormap)
     output = cv2.addWeighted(image[0], alpha, heatmap, 1 - alpha, 0)
@@ -193,7 +197,7 @@ def combineHeatAndFeatures(model, franges, outputlayers, lastconvlayer, image):
 
 
 def featuresToDataFrame(model, outputlayers, images):
-    maskheat = False
+    maskheat = True
 
     layermodel = makeLayerOutputModel(model, outputlayers)
 
@@ -207,12 +211,6 @@ def featuresToDataFrame(model, outputlayers, images):
     head.append('label')
     head.append('imagepath')
 
-    #if not os.path.exists('.session'):
-    #    os.makedirs('.session')
-    #else:
-    #    for f in glob.glob('heat_*'):
-    #        os.remove(f)
-
     # Convert each list of feature map activations to transactions
     transactions = []
     pathindex = 0
@@ -222,33 +220,55 @@ def featuresToDataFrame(model, outputlayers, images):
         pathindex += batchsize
         outs = layermodel.predict(imagebatch)
         for i in range(batchsize):
+            #print(i)
             trans = []
             pred = np.argmax(outs[-1][i])
             label = np.argmax(labelbatch[i])
             imagepath = paths[i]
             if maskheat:
                 _, himg = heatmap(np.asarray([imagebatch[i, :, :, :]]), model, 'activation_3', pred)
+                himg[himg < .7] = 0
+                himg[himg >= .7] = 1
             #np.save('heat_' + str(pathindex).zfill(5) + '.npy', himg)
             li = 0
             for layer in outs[:-1]:
-
+                #print('layer:' + str(li))
                 receptivelayerinfo = getConvLayerSubset(model, outputlayers[li])
+                #receptivelayerinfo = getConvLayerSubset(model, 'activation_3')
                 li += 1
 
+                if maskheat:
+                    xlim = layer[i, :, :, 0].shape[1]
+                    ylim = layer[i, :, :, 0].shape[0]
+                    rfields = []
+                    for x in range(xlim):
+                        col = []
+                        for y in range(ylim):
+                            xrange, yrange = calcReceptiveField(x, y, receptivelayerinfo)
+                            hr = himg[yrange[0]:yrange[1] + 1, xrange[0]:xrange[1] + 1]
+                            col.append(hr.max())
+                        rfields.append(col)
+                    rfields = np.asarray(rfields)
+
                 for fi in range(layer.shape[-1]):
-                    #print('image:' + str(pathindex + i) + ' layer:' + str(li - 1) + ' feat:' + str(fi))
+
+                    print('image:' + str(pathindex + i) + ' layer:' + str(li - 1) + ' feat:' + str(fi))
 
                     if maskheat:
                         currfmap = layer[i, :, :, fi]
-                        heatfeatmap = np.zeros(currfmap.shape)
-                        for x in range(currfmap.shape[1]):
-                            for y in range(currfmap.shape[0]):
-                                xrange, yrange = calcReceptiveField(x, y, receptivelayerinfo)
-                                v = currfmap[y, x]
-                                hr = himg[yrange[0]:yrange[1] + 1, xrange[0]:xrange[1] + 1]
-                                heatfeatmap[y, x] = v * np.sum(hr)
+                        v = (currfmap * rfields).max()
+                        #heatfeatmap = np.zeros(currfmap.shape)
+                        #for x in range(currfmap.shape[1]):
+                        #    for y in range(currfmap.shape[0]):
+                        #        #xrange, yrange = calcReceptiveField(x, y, receptivelayerinfo)
+                        #        #xrange, yrange = rfields[x][y]
+                        #        v = currfmap[y, x]
+                        #        #hr = himg[yrange[0]:yrange[1] + 1, xrange[0]:xrange[1] + 1]
+                        #        hv = rfields[x][y]
+                        #        heatfeatmap[y, x] = v * hv
+                        #        #heatfeatmap[y, x] = v * hr.max() #np.sum(hr)
 
-                        v = heatfeatmap.max()
+                        #v = heatfeatmap.max()
                     else:
                         v = layer[i, :, :, fi].max()
                     trans.append(v)
@@ -621,3 +641,12 @@ def load_from_directory(
         dataset.file_paths = image_paths
 
     return dataset
+
+
+def confusionMatrix(model, ds):
+    yt = np.concatenate([y for x, y in ds], axis=0)
+    yt = np.argmax(yt, axis=1)
+    yp = model.predict(ds)
+    yp = np.argmax(yp, axis=1)
+    conf = confusion_matrix(yt, yp, normalize='pred')
+    return conf
