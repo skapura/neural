@@ -216,7 +216,7 @@ def renderPattern2(patternid, pattern, model, trans, indexlist, franges=None):
     info = trans.loc[indexlist, ['predicted', 'label', 'imagepath']]
     info.to_csv(outpath + '/info.csv')
 
-    layers = list(set([t.split('-')[0] for t in pattern['pattern']]))
+    layers = list(set([t.split('-')[0] for t in pattern]))
     layers.sort()
     layers.append('prediction')
     layermodel = mlutil.makeLayerOutputModel(model, layers)
@@ -230,7 +230,7 @@ def renderPattern2(patternid, pattern, model, trans, indexlist, franges=None):
         #_, himg = mlutil.heatmap(np.asarray([image]), model, 'activation_3', label)
         #himg[himg < .5] = 0
         #himg[himg >= .5] = 1
-        for p in pattern['pattern']:
+        for p in pattern:
             t = p.split('-')
             layername = t[0]
             t = t[1].split('_')

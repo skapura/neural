@@ -68,62 +68,68 @@ def load(path):
 
 
 def pipeline():
-    trainds = mlutil.load_from_directory('images_large/train_grass', labels='inferred', label_mode='categorical',
+    trainds = mlutil.load_from_directory('images_large/train', labels='inferred', label_mode='categorical',
                                          image_size=(256, 256), shuffle=True)
-    valds = mlutil.load_from_directory('images_large/val_grass', labels='inferred', label_mode='categorical',
+    valds = mlutil.load_from_directory('images_large/val', labels='inferred', label_mode='categorical',
                                        image_size=(256, 256), shuffle=True)
     #model = buildModel()
-    #model.fit(trainds, epochs=10, validation_data=valds)
+    #tensorboard_callback = keras.callbacks.TensorBoard(log_dir='tlogs')
+    #model.fit(trainds, epochs=2, validation_data=valds, callbacks=[tensorboard_callback])
+
+
     #model.save('largeimage_grass.keras')
-    model = models.load_model('largeimage_grass.keras', compile=True)
-    #w = model.layers[10].weights[0]
-    w = model.layers[13].get_weights()
-    w[0][6][:] = np.zeros(w[0][6].shape)
-    w[0][8][:] = np.zeros(w[0][8].shape)
-    w[0][28][:] = np.zeros(w[0][28].shape)
-    w[0][51][:] = np.zeros(w[0][51].shape)
-    for i in range(63):
-        w[0][i][:] = np.zeros(w[0][i].shape)
-    #w[0][51][0] = 0.0
-    #w[0][51][1] = 0.0
-    #w[0][51][2] = 0.0
-    #wn = np.zeros(w[0].shape)
-    model.layers[13].set_weights(w)
+    model = models.load_model('largeimage2.keras', compile=True)
+    #w = model.layers[13].get_weights()
+    #w[0][13][:] = np.zeros(w[0][13].shape)
+    #w[0][22][:] = np.zeros(w[0][22].shape)
+    #w[0][27][:] = np.zeros(w[0][27].shape)
+    #w[0][29][:] = np.zeros(w[0][29].shape)
+    #w[0][42][:] = np.zeros(w[0][42].shape)
+    #w[0][49][:] = np.zeros(w[0][49].shape)
+    #for i in range(63):
+    #    w[0][i][:] = np.zeros(w[0][i].shape)
+    #model.layers[13].set_weights(w)
+
+    model.fit(trainds, epochs=1, validation_data=valds)
+
+    #model.layers[13].trainable_weights
     #outputlayers = ['activation', 'activation_1', 'activation_2', 'activation_3', 'prediction']
     outputlayers = ['activation_3', 'prediction']
     lastlayer = ['activation_3']
 
     test_loss, test_acc = model.evaluate(valds)
 
+
     #franges = None
     #for imagebatch, labelbatch in valds:
     #    franges = mlutil.getLayerOutputRange(model, outputlayers, imagebatch, franges)
     #save('session/franges_grass.pkl', franges)
-    franges = load('session/franges_grass.pkl')
+    franges = load('session/franges2.pkl')
 
     #trans = mlutil.featuresToDataFrame(model, outputlayers, valds)
     #trans.to_csv('session/trans_grass.csv')
-    trans = pd.read_csv('session/trans_grass.csv', index_col='index')
+    trans = pd.read_csv('session/trans2.csv', index_col='index')
 
     #bdf, _ = pats.makeBinaryDataset(trans)
     #bdf.to_csv('session/bin_grass.csv')
-    bdf = pd.read_csv('session/bin_grass.csv', index_col='index')
+    bdf = pd.read_csv('session/bin2.csv', index_col='index')
 
     #correct, incorrect = pats.divideByPrediction(bdf, label=2, predicted=[1], activatedonly=True)
     #cpats = pats.mineContrastPatterns(incorrect, correct, 0.7, 1.0)
     #save('session/pats_grass.pkl', cpats)
-    cpats = load('session/pats_grass.pkl')
+    cpats = load('session/pats2.pkl')
     #pats.pats2csv(cpats, 'session/patterns_grass.csv')
 
-    idx = cpats[0]['targetmatches'][0]
-    imgpath = trans.loc[idx, 'imagepath']
+    f = frozenset(['activation_3-' + str(idx) + '_1' for idx in range(64)])
+
     #info = trans.loc[indexlist, ['predicted', 'label', 'imagepath']]
     #plot.renderPattern(0, cpats[0], model, imgpath)
     one = trans[trans['label'] == 0][:10].index.values
     two = trans[trans['label'] == 1][:10].index.values
     three = trans[trans['label'] == 2][:10].index.values
     b = np.concatenate([one, two, three])
-    plot.renderPattern2(0, cpats[0], model, trans, b) #cpats[0]['targetmatches'][:20])
+    plot.renderPattern2(0, f, model, trans, b)
+    #plot.renderPattern2(0, cpats[0]['pattern'], model, trans, b) #cpats[0]['targetmatches'][:20])
 
     images = trans.loc[trans['label'] == 1, 'imagepath'][:20]
     plot.renderFeatureMaps(images, model, ['activation_3', 'prediction'])
