@@ -171,7 +171,7 @@ def mineContrastPatterns(target, other, minsup, supratio):
     # Find pattern support in both datasets
     i = 0
     for p in patlist:
-        print(str(i) + '/' + str(len(patlist)))
+        #print(str(i) + '/' + str(len(patlist)))
         i += 1
         count = 0
         for c in othersets:

@@ -7,6 +7,7 @@ import mlutil
 import cv2
 import pandas as pd
 import math
+import patterns as pats
 
 
 def scale(x, in_min, in_max, out_min, out_max):
@@ -23,12 +24,14 @@ def scale(x, in_min, in_max, out_min, out_max):
 def scaleframe(df, out_min, out_max):
     mx = df.iloc[:, :-3].max()
     s = df.iloc[:, :-3].to_numpy()
+
     for c in range(s.shape[1]):
         maxval = mx.iloc[c]
         for r in range(s.shape[0]):
             v = s[r, c]
             s[r, c] = scale(v, 0.0, maxval, out_min, out_max)
     newdf = pd.DataFrame(s, columns=df.columns[:-3])
+    newdf.index = df.index
     newdf = pd.concat([newdf, df['label']], axis=1)
     return newdf
 
@@ -115,8 +118,37 @@ def renderavg(trans):
     cv2.imwrite('test.png', canvas)
 
 
-def renderactivations(outs):
-    print(1)
+def renderactivations(outs, outpath):
+    vals = outs[:-1]
+    label = int(outs[-1])
+    canvas = renderModel(model, vals, label)
+    cv2.imwrite(outpath, canvas)
+
+
+def makebinary(trans, threshold):
+    bvals = {}
+    for col, vals in trans.items():
+        if col == 'label':
+            continue
+        vlist = []
+        for v in vals:
+            vlist.append(1 if v >= threshold else 0)
+        bvals[col] = vlist
+    bvals['label'] = trans['label']
+    bdf = pd.DataFrame(bvals)
+    bdf.index = trans.index
+    return bdf
+
+
+def displaycounts(binned):
+    for c in binned.columns[:-1]:
+        v = binned.groupby('label')[c].value_counts()
+        print(c)
+        for i in range(len(v)):
+            idx = v.index[i]
+            if idx[1] == 1:
+                a = v.iloc[i]
+                print(str(idx[0]) + ', ' + str(a))
 
 
 valds = mlutil.load_from_directory('images_large/val', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
@@ -128,9 +160,33 @@ outputlayers = ['activation', 'activation_1', 'activation_2', 'activation_3', 'p
 trans = pd.read_csv('session/trans_plot.csv', index_col='index')
 trans = trans.loc[trans['label'] == trans['predicted']]
 strans = scaleframe(trans, 0, 255)
-renderavg(trans)
-outs = strans.iloc[0]
-renderactivations(outs)
+binned = makebinary(strans, 128)
+col = [c for c in binned.columns if '_3' in c]
+col.append('label')
+binned = binned.loc[:, col]
+#binned.to_csv('activation_binned.csv')
+#displaycounts(binned)
+
+print('0')
+sel = binned.loc[binned['label'] == 0.0].drop('label', axis=1)
+notsel = binned.loc[binned['label'] != 0.0].drop('label', axis=1)
+cpats = pats.mineContrastPatterns(sel, notsel, 0.1, 1.1)
+print('1')
+sel = binned.loc[binned['label'] == 1.0].drop('label', axis=1)
+notsel = binned.loc[binned['label'] != 1.0].drop('label', axis=1)
+cpats = pats.mineContrastPatterns(sel, notsel, 0.1, 1.1)
+print('2')
+sel = binned.loc[binned['label'] == 2.0].drop('label', axis=1)
+notsel = binned.loc[binned['label'] != 2.0].drop('label', axis=1)
+cpats = pats.mineContrastPatterns(sel, notsel, 0.1, 1.1)
+
+
+#renderavg(trans)
+#outs = strans.loc[strans['label'] == 2.0].iloc[0]
+#outs = strans.iloc[38]
+#renderactivations(strans.loc[strans['label'] == 0.0].iloc[0], 'active_0.png')
+#renderactivations(strans.loc[strans['label'] == 1.0].iloc[0], 'active_1.png')
+#renderactivations(strans.loc[strans['label'] == 2.0].iloc[0], 'active_2.png')
 
 
 #s = trans.loc[trans['label'] == 0].iloc[:, :-3]
