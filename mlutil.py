@@ -110,6 +110,22 @@ def overlayHeatmap(image, heat, alpha=0.4):
     return output
 
 
+def overlayHeatmap2(image, heatmap, alpha=0.4):
+    #(w, h) = (image.shape[2], image.shape[1])
+    #heatmap = cv2.resize(heat, (w, h))
+    if heatmap.max() == 0.0:
+        heatmap = heatmap.astype("uint8")
+    else:
+        numer = heatmap - np.min(heatmap)
+        denom = (heatmap.max() - heatmap.min()) + 0
+        heatmap = numer / denom
+        heatmap = (heatmap * 255).astype("uint8")
+    colormap = cv2.COLORMAP_VIRIDIS
+    heatmap = cv2.applyColorMap(heatmap, colormap)
+    output = cv2.addWeighted(image[0], alpha, heatmap, 1 - alpha, 0)
+    return output
+
+
 def getLayerOutputRange(model, layernames, images, franges=None):
     layermodel = makeLayerOutputModel(model, layernames)
 
@@ -196,7 +212,7 @@ def combineHeatAndFeatures(model, franges, outputlayers, lastconvlayer, image):
     return heats, predicted
 
 
-def featuresToDataFrame(model, outputlayers, images):
+def featuresToDataFrame(model, outputlayers, images, activationthreshold=0.7):
     maskheat = True
 
     layermodel = makeLayerOutputModel(model, outputlayers)
@@ -227,8 +243,8 @@ def featuresToDataFrame(model, outputlayers, images):
             imagepath = paths[i]
             if maskheat:
                 _, himg = heatmap(np.asarray([imagebatch[i, :, :, :]]), model, 'activation_3', pred)
-                himg[himg < .7] = 0
-                himg[himg >= .7] = 1
+                himg[himg < activationthreshold] = 0
+                himg[himg >= activationthreshold] = 1
             #np.save('heat_' + str(pathindex).zfill(5) + '.npy', himg)
             li = 0
             for layer in outs[:-1]:

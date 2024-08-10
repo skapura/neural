@@ -189,7 +189,7 @@ def mineContrastPatterns(target, other, minsup, supratio):
     patlist.sort(key=lambda x: x['supportratio'], reverse=True)
     selectedpats = []
     for p in patlist:
-        if p['supportratio'] >= supratio:
+        if p['supportratio'] >= supratio and p['targetsupport'] >= minsup:
             selectedpats.append(p)
     for p in reversed(selectedpats):
         print(str(p['targetsupport'] - p['othersupport']) + ', ' + str(p['othersupport']) + ', ' + str(p['targetsupport']) + ', ' + str(p['supportratio']) + ', ' + str(p['pattern']))

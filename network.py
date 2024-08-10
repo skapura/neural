@@ -151,12 +151,99 @@ def displaycounts(binned):
                 print(str(idx[0]) + ', ' + str(a))
 
 
-valds = mlutil.load_from_directory('images_large/val', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
+def nodeig(trans, node):
+    labels = trans['label'].unique()
+    labelcounts = trans['label'].value_counts()
+    infod = 0.0
+    for lc in labelcounts:
+        p = lc / len(trans)
+        infod -= p * math.log2(p)
+
+    nodecounts = trans[[node, 'label']].groupby('label', as_index=False).value_counts()
+    infonode = 0.0
+    for l in labels:
+        labelnodecounts = nodecounts[nodecounts['label'] == l]
+        vals = labelnodecounts[node].unique()
+        infoa = 0.0
+        classtotal = labelcounts[l]
+        for v in vals:
+            lnc = labelnodecounts[labelnodecounts[node] == v]['count'].iloc[0]
+            p = lnc / float(classtotal)
+            infoa -= p * math.log2(p)
+
+        pc = classtotal / float(len(trans))
+        infonode += pc * infoa
+
+    return infod - infonode
+
+
+def infogain(trans):
+    vals = list()
+    for c in trans.columns[:-1]:
+        info = nodeig(trans, c)
+        vals.append(info)
+    infos = pd.Series(vals, index=trans.columns[:-1])
+    print(1)
+
+
+def plotPat(model, pattern, imagepath):
+    outputlayers = ['activation', 'activation_1', 'activation_2', 'activation_3', 'prediction']
+    receptivelayers = mlutil.getConvLayerSubset(model, 'activation_3')
+    layermodel = mlutil.makeLayerOutputModel(model, outputlayers)
+    img = cv2.imread(imagepath)
+    img = cv2.resize(img, (256, 256))
+    outs = layermodel.predict(np.asarray([img]))
+    fmap = outs[-2][0, :, :, 0]
+    f_min, f_max = fmap.min(), fmap.max()
+
+    h, himg = mlutil.heatmap(np.asarray([img]), model, 'activation_3', 0)
+    activationthreshold = 0.3
+    himg[himg < activationthreshold] = 0
+    himg[himg >= activationthreshold] = 1
+    heatimg = mlutil.overlayHeatmap2(np.asarray([img]), himg, 0.4)
+    cv2.imwrite('test_heat2.png', heatimg)
+
+    # Scale image to 0-255
+    if f_max == 0.0:
+        scaled = fmap
+    else:
+        scaled = np.interp(fmap, [f_min, f_max], [0, 255]).astype(np.uint8)
+
+    # Create receptive field mask
+    mask = np.zeros((img.shape[0], img.shape[1], 3), np.uint8)
+    for y in range(scaled.shape[0]):
+        for x in range(scaled.shape[1]):
+            v = scaled[y, x]
+            xfield, yfield = mlutil.calcReceptiveField(x, y, receptivelayers)
+            for xf in range(xfield[0], xfield[1] + 1):
+                for yf in range(yfield[0], yfield[1] + 1):
+                    if v > 0:
+                        mask[yf, xf] = (0, 0, v)
+    himg = np.repeat(himg[:, :, np.newaxis], 3, axis=2)
+    mask2 = mask * himg
+    m = mask2.astype(np.uint8)
+    cv2.imwrite('test.png', mask2)
+
+    combined = cv2.addWeighted(img, 1.0, m, 1.0, 0)
+    cv2.imwrite('test_full.png', combined)
+
+    outs = debugmodel.predict(np.asarray([test_images[imageindex]]))
+    # o = l[0]['output'][:, :, 1]
+    # o = layeroutputs[-1]['output'][:, :, 0]
+    # fieldx, fieldy = mlutil.calcReceptiveField(3, 3, ll)
+    # plotReceptiveField(orig_test_images[imageindex], [ll[0]], o)
+    # plotReceptiveField(orig_test_images[imageindex], layerinfo, o)
+
+    print(1)
+
+valds = mlutil.load_from_directory('images_large/train', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
 
 model = models.load_model('largeimage2.keras', compile=True)
 outputlayers = ['activation', 'activation_1', 'activation_2', 'activation_3', 'prediction']
-#trans = mlutil.featuresToDataFrame(model, outputlayers, valds)
+#trans = mlutil.featuresToDataFrame(model, outputlayers, valds, 0.3)
 #trans.to_csv('session/trans_plot.csv')
+
+
 trans = pd.read_csv('session/trans_plot.csv', index_col='index')
 trans = trans.loc[trans['label'] == trans['predicted']]
 strans = scaleframe(trans, 0, 255)
@@ -164,21 +251,47 @@ binned = makebinary(strans, 128)
 col = [c for c in binned.columns if '_3' in c]
 col.append('label')
 binned = binned.loc[:, col]
-#binned.to_csv('activation_binned.csv')
+binned.to_csv('activation_binned.csv')
 #displaycounts(binned)
+#inf = nodeig(binned, 'activation_3-0')
+#infogain(binned)
 
+minsup = 0.2
+minsupratio = 2.0
 print('0')
 sel = binned.loc[binned['label'] == 0.0].drop('label', axis=1)
 notsel = binned.loc[binned['label'] != 0.0].drop('label', axis=1)
-cpats = pats.mineContrastPatterns(sel, notsel, 0.1, 1.1)
+cpats = pats.mineContrastPatterns(sel, notsel, minsup, minsupratio)
+eqclass = list()
+eqclass.append([cpats[0], set(cpats[0]['targetmatches']), set(cpats[0]['othermatches'])])
+for p in cpats[1:]:
+    ts = set(p['targetmatches'])
+    os = set(p['othermatches'])
+    match = False
+    for eq in eqclass:
+        if ts == eq[1]: # and os == eq[2]:
+            match = True
+            break
+    if not match:
+        eqclass.append([p, ts, os])
+
+equivother = set()
+equivtarget = set()
+for p in cpats:
+    equivother.update(p['othermatches'])
+    equivtarget.update(p['targetmatches'])
+
+index = cpats[0]['targetmatches'][1]
+path = trans.loc[index, 'imagepath']
+plotPat(model, cpats[0], path)
 print('1')
 sel = binned.loc[binned['label'] == 1.0].drop('label', axis=1)
 notsel = binned.loc[binned['label'] != 1.0].drop('label', axis=1)
-cpats = pats.mineContrastPatterns(sel, notsel, 0.1, 1.1)
+cpats = pats.mineContrastPatterns(sel, notsel, minsup, minsupratio)
 print('2')
 sel = binned.loc[binned['label'] == 2.0].drop('label', axis=1)
 notsel = binned.loc[binned['label'] != 2.0].drop('label', axis=1)
-cpats = pats.mineContrastPatterns(sel, notsel, 0.1, 1.1)
+cpats = pats.mineContrastPatterns(sel, notsel, minsup, minsupratio)
 
 
 #renderavg(trans)
