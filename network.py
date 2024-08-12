@@ -186,22 +186,23 @@ def infogain(trans):
     print(1)
 
 
-def plotPat(model, pattern, imagepath):
-    outputlayers = ['activation', 'activation_1', 'activation_2', 'activation_3', 'prediction']
-    receptivelayers = mlutil.getConvLayerSubset(model, 'activation_3')
-    layermodel = mlutil.makeLayerOutputModel(model, outputlayers)
-    img = cv2.imread(imagepath)
-    img = cv2.resize(img, (256, 256))
-    outs = layermodel.predict(np.asarray([img]))
-    fmap = outs[-2][0, :, :, 0]
+#def plotFeat(model, fmapindex, imagepath):
+def plotFeat(fmap, img, himg, receptivelayers, nodename, showintensity, prefix, canvas):
+    #outputlayers = ['activation', 'activation_1', 'activation_2', 'activation_3', 'prediction']
+    #receptivelayers = mlutil.getConvLayerSubset(model, 'activation_3')
+    #layermodel = mlutil.makeLayerOutputModel(model, outputlayers)
+    #img = cv2.imread(imagepath)
+    #img = cv2.resize(img, (256, 256))
+    #outs = layermodel.predict(np.asarray([img]))
+    #fmap = outs[-2][0, :, :, fmapindex]
     f_min, f_max = fmap.min(), fmap.max()
 
-    h, himg = mlutil.heatmap(np.asarray([img]), model, 'activation_3', 0)
-    activationthreshold = 0.3
-    himg[himg < activationthreshold] = 0
-    himg[himg >= activationthreshold] = 1
-    heatimg = mlutil.overlayHeatmap2(np.asarray([img]), himg, 0.4)
-    cv2.imwrite('test_heat2.png', heatimg)
+    #h, himg = mlutil.heatmap(np.asarray([img]), model, 'activation_3', 0)
+    #activationthreshold = 0.3
+    #himg[himg < activationthreshold] = 0
+    #himg[himg >= activationthreshold] = 1
+    #heatimg = mlutil.overlayHeatmap2(np.asarray([img]), himg, 0.4)
+    #cv2.imwrite('test_heat2.png', heatimg)
 
     # Scale image to 0-255
     if f_max == 0.0:
@@ -214,27 +215,99 @@ def plotPat(model, pattern, imagepath):
     for y in range(scaled.shape[0]):
         for x in range(scaled.shape[1]):
             v = scaled[y, x]
-            xfield, yfield = mlutil.calcReceptiveField(x, y, receptivelayers)
-            for xf in range(xfield[0], xfield[1] + 1):
-                for yf in range(yfield[0], yfield[1] + 1):
-                    if v > 0:
-                        mask[yf, xf] = (0, 0, v)
-    himg = np.repeat(himg[:, :, np.newaxis], 3, axis=2)
-    mask2 = mask * himg
-    m = mask2.astype(np.uint8)
-    cv2.imwrite('test.png', mask2)
+            if v > 0:
+                xfield, yfield = mlutil.calcReceptiveField(x, y, receptivelayers)
+                for xf in range(xfield[0], xfield[1] + 1):
+                    for yf in range(yfield[0], yfield[1] + 1):
+                        if mask[yf, xf][2] < v:
+                            mask[yf, xf] = (0, 0, v if showintensity else 255)
+                        #mask[yf, xf] = (0, 0, v)
+    #himg = np.repeat(himg[:, :, np.newaxis], 3, axis=2)
+    #mask2 = mask * himg
+    #m = mask2.astype(np.uint8)
+    #cv2.imwrite('test.png', mask2)
 
-    combined = cv2.addWeighted(img, 1.0, m, 1.0, 0)
-    cv2.imwrite('test_full.png', combined)
+    alpha = 0.2
+    #combined = cv2.addWeighted(img, 1.0, mask, 1.0, 0)
+    combined = cv2.addWeighted(img, 0.4, mask, 1, 0)
+    cv2.imwrite(prefix + 'test_' + nodename + '.png', combined)
+    #if canvas is not None:
+    #    img = canvas
+    #combined = cv2.addWeighted(img, 1.0, m, 1.0, 0)
+    #cv2.imwrite('test_full.png', combined)
+    #return combined
 
-    outs = debugmodel.predict(np.asarray([test_images[imageindex]]))
-    # o = l[0]['output'][:, :, 1]
-    # o = layeroutputs[-1]['output'][:, :, 0]
-    # fieldx, fieldy = mlutil.calcReceptiveField(3, 3, ll)
-    # plotReceptiveField(orig_test_images[imageindex], [ll[0]], o)
-    # plotReceptiveField(orig_test_images[imageindex], layerinfo, o)
 
+def plotPat(model, pattern, prefix, imagepath):
+    outputlayers = ['activation', 'activation_1', 'activation_2', 'activation_3', 'prediction']
+    receptivelayers = mlutil.getConvLayerSubset(model, 'activation_3')
+    layermodel = mlutil.makeLayerOutputModel(model, outputlayers)
+    img = cv2.imread(imagepath)
+    img = cv2.resize(img, (256, 256))
+    outs = layermodel.predict(np.asarray([img]))
+    h, himg = mlutil.heatmap(np.asarray([img]), model, 'activation_3', 0)
+    activationthreshold = 0.3
+    himg[himg < activationthreshold] = 0
+    himg[himg >= activationthreshold] = 1
+    heatimg = mlutil.overlayHeatmap2(np.asarray([img]), himg, 0.4)
+    cv2.imwrite(prefix + 'test_heat.png', heatimg)
+
+    canvas = heatimg
+    for p in pattern['pattern']:
+        print(p)
+        tokens = p.split('-')
+        index = int(tokens[1])
+        fmap = outs[-2][0, :, :, index]
+        canvas = plotFeat(fmap, img, himg, receptivelayers, p, True, prefix + 'int_', canvas)
+        #print(p)
+    #cv2.imwrite(prefix + 'test_combined.png', canvas)
+
+    canvas = None
+    for p in pattern['pattern']:
+        print(p)
+        tokens = p.split('-')
+        index = int(tokens[1])
+        fmap = outs[-2][0, :, :, index]
+        canvas = plotFeat(fmap, img, himg, receptivelayers, p, False, prefix, canvas)
+        #print(p)
+    cv2.imwrite(prefix + 'test_pattern.png', canvas)
+
+    #for p in pattern['pattern']:
+    #    print(p)
+    #    tokens = p.split('-')
+    #    index = int(tokens[1])
+    #    fmap = outs[-2][0, :, :, index]
+    #    plotFeat(fmap, img, himg, receptivelayers, p, True, prefix, None)
+    #    #print(p)
     print(1)
+
+
+def plotLayer(model, prefix, imagepath):
+    outputlayers = ['activation', 'activation_1', 'activation_2', 'activation_3', 'prediction']
+    receptivelayers = mlutil.getConvLayerSubset(model, 'activation_3')
+    layermodel = mlutil.makeLayerOutputModel(model, outputlayers)
+    img = cv2.imread(imagepath)
+    img = cv2.resize(img, (256, 256))
+    outs = layermodel.predict(np.asarray([img]))
+    h, himg = mlutil.heatmap(np.asarray([img]), model, 'activation_3', 0)
+    activationthreshold = 0.3
+    himg[himg < activationthreshold] = 0
+    himg[himg >= activationthreshold] = 1
+    heatimg = mlutil.overlayHeatmap2(np.asarray([img]), himg, 0.4)
+    cv2.imwrite(prefix + 'test_heat.png', heatimg)
+
+    #for p in pattern['pattern']:
+    o = outs[-2]
+    for index in range(outs[-2].shape[-1]):
+        print(index)
+        #tokens = p.split('-')
+        #index = int(tokens[1])
+        fmap = outs[-2][0, :, :, index]
+        canvas = plotFeat(fmap, img, himg, receptivelayers, 'activation_3-' + str(index), True, prefix, None)
+        #print(p)
+    print(1)
+
+
 
 valds = mlutil.load_from_directory('images_large/train', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
 
@@ -262,6 +335,8 @@ print('0')
 sel = binned.loc[binned['label'] == 0.0].drop('label', axis=1)
 notsel = binned.loc[binned['label'] != 0.0].drop('label', axis=1)
 cpats = pats.mineContrastPatterns(sel, notsel, minsup, minsupratio)
+
+d = frozenset(cpats[1]['targetmatches']) - frozenset(cpats[0]['targetmatches'])
 eqclass = list()
 eqclass.append([cpats[0], set(cpats[0]['targetmatches']), set(cpats[0]['othermatches'])])
 for p in cpats[1:]:
@@ -281,9 +356,20 @@ for p in cpats:
     equivother.update(p['othermatches'])
     equivtarget.update(p['targetmatches'])
 
+#index = cpats[17]['targetmatches'][1]
+#path = trans.loc[index, 'imagepath']
+#plotPat(model, cpats[17], path)
+
 index = cpats[0]['targetmatches'][1]
-path = trans.loc[index, 'imagepath']
-plotPat(model, cpats[0], path)
+a = frozenset(sel.index.values)
+d = a - frozenset(cpats[31]['targetmatches'])
+for index in sel.index.values:
+#for index in cpats[31]['othermatches']:
+    print(index)
+    pathprefix = 'session3/image_' + str(index) + '_'
+    path = trans.loc[index, 'imagepath']
+    #plotPat(model, cpats[31], pathprefix, path)
+    plotLayer(model, pathprefix, path)
 print('1')
 sel = binned.loc[binned['label'] == 1.0].drop('label', axis=1)
 notsel = binned.loc[binned['label'] != 1.0].drop('label', axis=1)
