@@ -410,6 +410,7 @@ def geterrordataset(trans):
 trainds = mlutil.load_from_directory('images_large/train', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
 valds = mlutil.load_from_directory('images_large/val', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
 
+
 #model = buildModel()
 #model.fit(trainds, epochs=10, validation_data=valds)
 #model.save('largeimage16.keras')
