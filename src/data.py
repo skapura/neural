@@ -2,6 +2,8 @@ import tensorflow as tf
 from keras.src.utils import dataset_utils
 from keras.src.utils.image_dataset_utils import paths_and_labels_to_dataset
 from keras.src.backend.config import standardize_data_format
+from sklearn.preprocessing import MinMaxScaler
+import pandas as pd
 import numpy as np
 
 
@@ -339,3 +341,13 @@ def load_dataset(dsname, size=(256, 256), shuffle=True):
     trainds = load_from_directory('datasets/' + dsname + '/train', labels='inferred', label_mode='categorical', image_size=size, shuffle=shuffle)
     valds = load_from_directory('datasets/' + dsname + '/val', labels='inferred', label_mode='categorical', image_size=size, shuffle=shuffle)
     return trainds, valds
+
+
+def scale(df, output_range=(0, 1), exclude=['predicted', 'label', 'path']):
+    scaler = MinMaxScaler(feature_range=output_range)
+    selected = df.columns.difference(exclude, sort=False)
+    scaled = scaler.fit_transform(df[selected])
+    sdf = pd.DataFrame(scaled, columns=selected, index=df.index)
+    #a = sdf.astype(int)
+    sdf = pd.concat([sdf, df[exclude]], axis=1)
+    return sdf

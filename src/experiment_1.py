@@ -1,7 +1,10 @@
 import tensorflow as tf
 import keras
-from keras import layers
+from keras import layers, models
 from keras.src.models import Functional
+import pandas as pd
+from data import load_dataset, scale
+import patterns as pats
 
 
 def build_model():
@@ -26,4 +29,12 @@ def build_model():
 
 
 def run():
+    trainds, valds = load_dataset('images_large')
+    model = models.load_model('largeimage16.keras', compile=True)
+    outputlayers = ['activation', 'activation_1', 'activation_2', 'activation_3', 'prediction']
+    trans = pats.model_to_transactions(model, outputlayers, trainds)
+    scaled = scale(trans, output_range=(0, 1))
+    bds = pats.binarize(scaled, 0.5)
+
+    #df_norm = (df - df.min()) / (df.max() - df.min())
     print('test')
