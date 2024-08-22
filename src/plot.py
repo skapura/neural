@@ -38,8 +38,7 @@ def plot_features(model, image, fmaps, franges=None):
 
     # Load image
     if isinstance(image, str):
-        imagedata = cv2.imread(image)
-        imagedata = cv2.resize(imagedata, (model.input_shape[1], model.input_shape[2]))
+        imagedata = model.load_image(image)
     else:
         imagedata = image
 
@@ -63,3 +62,17 @@ def output_features(model, image, fmaps, pathprefix, franges=None):
     for f in fmaps:
         path = pathprefix + '-' + f + '.png'
         cv2.imwrite(path, plots[f])
+
+
+def overlay_heatmap(image, heatmap, alpha=0.4):
+    if heatmap.max() == 0.0:
+        heatmap = heatmap.astype('uint8')
+    else:
+        numer = heatmap - np.min(heatmap)
+        denom = (heatmap.max() - heatmap.min()) + 0
+        heatmap = numer / denom
+        heatmap = (heatmap * 255).astype('uint8')
+    colormap = cv2.COLORMAP_VIRIDIS
+    heatmap = cv2.applyColorMap(heatmap, colormap)
+    output = cv2.addWeighted(image, alpha, heatmap, 1 - alpha, 0)
+    return output

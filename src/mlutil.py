@@ -1,4 +1,7 @@
+import tensorflow as tf
 from keras import models
+import cv2
+import numpy as np
 
 
 class PatternModel(models.Model):
@@ -23,6 +26,11 @@ class PatternModel(models.Model):
     def filters_in_layer(self, layer):
         numfilters = self.get_layer(layer).output.shape[-1]
         return [layer + '-' + str(i) for i in range(numfilters)]
+
+    def load_image(self, path):
+        imagedata = cv2.imread(path)
+        imagedata = cv2.resize(imagedata, (self.input_shape[1], self.input_shape[2]))
+        return imagedata
 
 
 def make_output_model(model, layers):
@@ -70,3 +78,41 @@ def receptive_field(x, y, layers):
         starty = starty * l['stride'][0]
         endy = endy * l['stride'][0] + l['kernel'][0] - 1
     return (startx, endx), (starty, endy)
+
+
+def heatmap(img_array, model, last_conv_layer_name, pred_index=None):
+    # First, we create a model that maps the input image to the activations
+    # of the last conv layer as well as the output predictions
+    grad_model = models.Model(
+        model.inputs, [model.get_layer(last_conv_layer_name).output, model.output[0]]
+    )
+
+    # Then, we compute the gradient of the top predicted class for our input image
+    # with respect to the activations of the last conv layer
+    with tf.GradientTape() as tape:
+        last_conv_layer_output, preds = grad_model(img_array)
+        if pred_index is None:
+            pred_index = tf.argmax(preds[0])
+        class_channel = preds[:, pred_index]
+
+    # This is the gradient of the output neuron (top predicted or chosen)
+    # with regard to the output feature map of the last conv layer
+    grads = tape.gradient(class_channel, last_conv_layer_output)
+
+    # This is a vector where each entry is the mean intensity of the gradient
+    # over a specific feature map channel
+    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+
+    # We multiply each channel in the feature map array
+    # by "how important this channel is" with regard to the top predicted class
+    # then sum all the channels to obtain the heatmap class activation
+    last_conv_layer_output = last_conv_layer_output[0]
+    heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
+    heatmap = tf.squeeze(heatmap)
+
+    # For visualization purpose, we will also normalize the heatmap between 0 & 1
+    heatmap = (tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)).numpy()
+    (w, h) = (img_array.shape[2], img_array.shape[1])
+    heatmapimage = cv2.resize(heatmap, (w, h))
+
+    return heatmap, heatmapimage

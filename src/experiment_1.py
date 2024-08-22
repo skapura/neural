@@ -6,8 +6,10 @@ import pandas as pd
 from data import load_dataset, scale, get_ranges, image_path
 import patterns as pats
 import mlutil
-from plot import output_features
+from plot import output_features, overlay_heatmap
 import const
+import cv2
+import numpy as np
 
 
 def build_model():
@@ -40,6 +42,7 @@ def run():
     outputmodel = mlutil.make_output_model(model, selectedlayers)
 
     trainds, valds = load_dataset('images_large')
+
     #trans = pats.model_to_transactions(model, outputlayers, trainds)
     #trans.to_csv('session/trans_feat16.csv')
     trans = pd.read_csv('session/trans_feat16.csv', index_col='index')
@@ -53,6 +56,12 @@ def run():
     minsup = 0.2
     minsupratio = 2.0
     cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
+
+    path = image_path(trans, 1)
+    imagedata = outputmodel.load_image(path)
+    heat, heatmapimage = mlutil.heatmap(np.asarray([imagedata]), model, 'activation_3')
+    heatover = overlay_heatmap(imagedata, heatmapimage)
+    cv2.imwrite('session_new/heat.png', heatover)
 
     filters = outputmodel.filters_in_layer('activation_3')
     path = image_path(trans, 0)
