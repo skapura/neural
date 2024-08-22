@@ -4,15 +4,22 @@ import mlutil
 
 
 def plot_feature_map(fmap, image, frange, layers):
+    mask = np.zeros((image.shape[0], image.shape[1], 3), np.uint8)
 
     # Scale image to 0-255
-    if frange is None or frange[1] == 0.0:
-        scaled = fmap
-    else:
+    if frange is None:  # Scale by local feature only
+        mn = fmap.min()
+        mx = fmap.max()
+        if mx > 0.0:
+            scaled = np.interp(fmap, (mn, mx), [0, 255]).astype(np.uint8)
+        else:
+            return image, mask  # No output to mask
+    elif frange[1] == 0.0:
+        return image, mask  # No output to mask
+    else:   # Scale from global feature range
         scaled = np.interp(fmap, frange, [0, 255]).astype(np.uint8)
 
     # Render receptive field mask
-    mask = np.zeros((image.shape[0], image.shape[1], 3), np.uint8)
     for y in range(scaled.shape[0]):
         for x in range(scaled.shape[1]):
             v = scaled[y, x]
@@ -49,3 +56,11 @@ def plot_features(model, image, fmaps, franges=None):
         plots[f] = canvas
 
     return plots
+
+
+def output_features(model, image, fmaps, pathprefix, franges=None):
+    plots = plot_features(model, image, fmaps, franges)
+
+    for f in fmaps:
+        path = pathprefix + '-' + f + '.png'
+        cv2.imwrite(path, plots[f])

@@ -6,7 +6,7 @@ import pandas as pd
 from data import load_dataset, scale, get_ranges, image_path
 import patterns as pats
 import mlutil
-from plot import plot_features
+from plot import output_features
 import const
 
 
@@ -56,5 +56,6 @@ def run():
 
     pattern = cpats[0]
     path = image_path(trans, pattern['targetmatches'][0])
-    plot_features(outputmodel, path, pattern['pattern'], franges)
+    prefix = 'session_new/' + str(pattern['targetmatches'][0]).zfill(4)
+    output_features(outputmodel, path, pattern['pattern'], prefix, franges)
     print('test')

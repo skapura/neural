@@ -1,5 +1,4 @@
 from keras import models
-import keras
 
 
 class PatternModel(models.Model):
