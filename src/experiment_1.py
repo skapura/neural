@@ -54,6 +54,10 @@ def run():
     minsupratio = 2.0
     cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
 
+    filters = outputmodel.filters_in_layer('activation_3')
+    path = image_path(trans, 0)
+    output_features(outputmodel, path, filters, 'session_new/test', franges)
+
     pattern = cpats[0]
     path = image_path(trans, pattern['targetmatches'][0])
     prefix = 'session_new/' + str(pattern['targetmatches'][0]).zfill(4)

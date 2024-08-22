@@ -20,6 +20,10 @@ class PatternModel(models.Model):
                 break
         return rlayers
 
+    def filters_in_layer(self, layer):
+        numfilters = self.get_layer(layer).output.shape[-1]
+        return [layer + '-' + str(i) for i in range(numfilters)]
+
 
 def make_output_model(model, layers):
     outputs = [layer.output for layer in model.layers if layer.name in layers]

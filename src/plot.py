@@ -60,7 +60,6 @@ def plot_features(model, image, fmaps, franges=None):
 
 def output_features(model, image, fmaps, pathprefix, franges=None):
     plots = plot_features(model, image, fmaps, franges)
-
     for f in fmaps:
         path = pathprefix + '-' + f + '.png'
         cv2.imwrite(path, plots[f])
