@@ -5,6 +5,7 @@ from keras.src.backend.config import standardize_data_format
 from sklearn.preprocessing import MinMaxScaler
 import pandas as pd
 import numpy as np
+import const
 
 
 ALLOWLIST_FORMATS = (".bmp", ".gif", ".jpeg", ".jpg", ".png")
@@ -343,7 +344,7 @@ def load_dataset(dsname, size=(256, 256), shuffle=True):
     return trainds, valds
 
 
-def scale(df, output_range=(0, 1), exclude=['predicted', 'label', 'path']):
+def scale(df, output_range=(0, 1), exclude=const.META):
     scaler = MinMaxScaler(feature_range=output_range)
     selected = df.columns.difference(exclude, sort=False)
     scaled = scaler.fit_transform(df[selected])
@@ -351,3 +352,18 @@ def scale(df, output_range=(0, 1), exclude=['predicted', 'label', 'path']):
     #a = sdf.astype(int)
     sdf = pd.concat([sdf, df[exclude]], axis=1)
     return sdf
+
+
+def get_ranges(df, zeromin=False, exclude=const.META):
+    selected = df.columns.difference(exclude, sort=False)
+    sdf = pd.DataFrame(df, columns=selected, index=df.index)
+    minvals = sdf.min()
+    maxvals = sdf.max()
+    r = {}
+    for col in selected:
+        r[col] = (0.0 if zeromin else minvals.loc[col], maxvals.loc[col])
+    return r
+
+
+def image_path(trans, index):
+    return trans.loc[index]['path']

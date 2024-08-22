@@ -3,8 +3,11 @@ import keras
 from keras import layers, models
 from keras.src.models import Functional
 import pandas as pd
-from data import load_dataset, scale
+from data import load_dataset, scale, get_ranges, image_path
 import patterns as pats
+import mlutil
+from plot import plot_features
+import const
 
 
 def build_model():
@@ -29,12 +32,29 @@ def build_model():
 
 
 def run():
-    trainds, valds = load_dataset('images_large')
     model = models.load_model('largeimage16.keras', compile=True)
     outputlayers = ['activation', 'activation_1', 'activation_2', 'activation_3', 'prediction']
-    trans = pats.model_to_transactions(model, outputlayers, trainds)
-    scaled = scale(trans, output_range=(0, 1))
-    bds = pats.binarize(scaled, 0.5)
+    last = 'activation_3'
+    info = mlutil.conv_layer_info(model, last)
+    selectedlayers = mlutil.layer_subset(outputlayers, last)
+    outputmodel = mlutil.make_output_model(model, selectedlayers)
 
-    #df_norm = (df - df.min()) / (df.max() - df.min())
+    trainds, valds = load_dataset('images_large')
+    #trans = pats.model_to_transactions(model, outputlayers, trainds)
+    #trans.to_csv('session/trans_feat16.csv')
+    trans = pd.read_csv('session/trans_feat16.csv', index_col='index')
+    franges = get_ranges(trans, zeromin=True)
+    scaled = scale(trans, output_range=(0, 1))
+    bdf = pats.binarize(scaled, 0.5)
+
+    col = [c for c in bdf.columns if '_1' in c]
+    sel = bdf.loc[bdf['label'] == 0.0].drop(const.META, axis=1)[col]
+    notsel = bdf.loc[bdf['label'] != 0.0].drop(const.META, axis=1)[col]
+    minsup = 0.2
+    minsupratio = 2.0
+    cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
+
+    pattern = cpats[0]
+    path = image_path(trans, pattern['targetmatches'][0])
+    plot_features(outputmodel, path, pattern['pattern'], franges)
     print('test')
