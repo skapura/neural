@@ -24,7 +24,7 @@ def plot_feature_map(fmap, image, frange, layers):
                             mask[yf, xf] = (0, 0, v)
 
     combined = cv2.addWeighted(image, 0.4, mask, 1.0, 0.0)
-    return combined
+    return combined, mask
 
 
 def plot_features(model, image, fmaps, franges=None):
@@ -36,18 +36,16 @@ def plot_features(model, image, fmaps, franges=None):
     else:
         imagedata = image
 
-    outputnames = [o.name for o in model.output]
     outs = model.predict(np.asarray([imagedata]))
 
+    plots = {}
     for f in fmaps:
         layername, findex = mlutil.parse_feature_ref(f)
-        oindex = outputnames.index(layername)
+        oindex = model.output_names.index(layername)
         foutput = outs[oindex][0, :, :, findex]
         convinfo = model.receptive_subset(layername)
         r = None if franges is None else franges[f]
-        canvas = plot_feature_map(foutput, imagedata, r, convinfo)
-        cv2.imwrite('test.png', canvas)
+        canvas, _ = plot_feature_map(foutput, imagedata, r, convinfo)
+        plots[f] = canvas
 
-        print(1)
-
-
+    return plots

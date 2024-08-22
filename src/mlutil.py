@@ -4,9 +4,12 @@ import keras
 
 class PatternModel(models.Model):
 
-    def __init__(self, **kwargs):
+    def __init__(self, layers, **kwargs):
         super().__init__(**kwargs)
         self.receptive_info = conv_layer_info(self, self.output[-2].name)
+        self.output_names = layers
+        for i in range(len(layers)):
+            self.output[i].name = layers[i]
 
     def receptive_subset(self, layer):
         idx = self.layers.index(self.get_layer(layer)) - 1
@@ -22,9 +25,7 @@ class PatternModel(models.Model):
 def make_output_model(model, layers):
     outputs = [layer.output for layer in model.layers if layer.name in layers]
     #outputmodel = models.Model(inputs=model.inputs, outputs=outputs)
-    outputmodel = PatternModel(inputs=model.inputs, outputs=outputs)
-    for i in range(len(layers)):
-        outputmodel.output[i].name = layers[i]
+    outputmodel = PatternModel(layers, inputs=model.inputs, outputs=outputs)
     return outputmodel
 
 
