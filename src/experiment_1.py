@@ -42,6 +42,7 @@ def run():
     outputmodel = mlutil.make_output_model(model, selectedlayers)
 
     trainds, valds = load_dataset('images_large')
+    classes = trainds.class_names
 
     #trans = pats.model_to_transactions(model, outputlayers, trainds)
     #trans.to_csv('session/trans_feat16.csv')
@@ -50,25 +51,47 @@ def run():
     scaled = scale(trans, output_range=(0, 1))
     bdf = pats.binarize(scaled, 0.5)
 
-    col = [c for c in bdf.columns if '_1' in c]
-    sel = bdf.loc[bdf['label'] == 0.0].drop(const.META, axis=1)[col]
-    notsel = bdf.loc[bdf['label'] != 0.0].drop(const.META, axis=1)[col]
-    minsup = 0.2
-    minsupratio = 2.0
+    #col = [c for c in bdf.columns if '_1' in c]
+    col = bdf.columns.difference(const.META, sort=False)
+    #sel = bdf.loc[bdf['label'] == 0.0].drop(const.META, axis=1)[col]
+    #notsel = bdf.loc[bdf['label'] != 0.0].drop(const.META, axis=1)[col]
+
+    #sel = bdf.loc[bdf['label'] != bdf['predicted']].drop(const.META, axis=1)[col]
+    #notsel = bdf.loc[bdf['label'] == bdf['predicted']].drop(const.META, axis=1)[col]
+
+    sel = bdf.loc[(bdf['label'] != bdf['predicted']) & (bdf['label'] == 0.0)].drop(const.META, axis=1)[col]
+    notsel = bdf.loc[(bdf['label'] == bdf['predicted']) & (bdf['label'] == 0.0)].drop(const.META, axis=1)[col]
+
+    minsup = 0.5
+    minsupratio = 1.1
     cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
+    pats.unique_elements(cpats)
+    #cpats = pats.filter_patterns_by_layer(cpats, ['activation_1', 'activation_2', 'activation_3'])
+    #mpats2 = pats.filter_patterns_by_layer(mpats, ['activation_1'])
+    #path = image_path(trans, 1)
+    #imagedata = outputmodel.load_image(path)
+    #heat, heatmapimage = mlutil.heatmap(np.asarray([imagedata]), model, 'activation_3')
+    #heatover = overlay_heatmap(imagedata, heatmapimage)
+    #cv2.imwrite('session_new/heat.png', heatover)
 
-    path = image_path(trans, 1)
-    imagedata = outputmodel.load_image(path)
-    heat, heatmapimage = mlutil.heatmap(np.asarray([imagedata]), model, 'activation_3')
-    heatover = overlay_heatmap(imagedata, heatmapimage)
-    cv2.imwrite('session_new/heat.png', heatover)
+    #filters = outputmodel.filters_in_layer('activation_3')
+    #path = image_path(trans, 0)
+    #output_features(outputmodel, path, filters, 'session_new/test', franges)
 
-    filters = outputmodel.filters_in_layer('activation_3')
-    path = image_path(trans, 0)
-    output_features(outputmodel, path, filters, 'session_new/test', franges)
+    #churches = trans.loc[trans['label'] == classes.index('church')]
+    #for index, _ in churches.iloc[:5].iterrows():
+    #    path = image_path(trans, index)
+    #    prefix = 'session_new/' + str(index).zfill(4)
+    #    filters = outputmodel.filters_in_layer('activation')
+    #    output_features(outputmodel, path, filters, prefix, franges)
 
-    pattern = cpats[0]
-    path = image_path(trans, pattern['targetmatches'][0])
-    prefix = 'session_new/' + str(pattern['targetmatches'][0]).zfill(4)
-    output_features(outputmodel, path, pattern['pattern'], prefix, franges)
+
+
+    for i, p in enumerate(cpats[:5]):
+        print(i)
+        for j in range(20):
+            imageindex = p['targetmatches'][j]
+            path = image_path(trans, imageindex)
+            prefix = 'session_new/pat_' + str(i) + '-' + str(imageindex).zfill(4)
+            output_features(outputmodel, path, p['pattern'], prefix, franges)
     print('test')

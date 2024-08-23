@@ -59,7 +59,7 @@ def binarize(df, threshold=0.5, exclude=const.META):
     return binned
 
 
-def mine_patterns(target, other, minsup, supratio):
+def mine_patterns(target, other, minsup, supratio, maxlen=5):
 
     # Write transactions to temp file
     lookup = {}
@@ -72,7 +72,7 @@ def mine_patterns(target, other, minsup, supratio):
             writer.writerow(itemset)
 
     # Perform pattern mining on 'target' dataset
-    fpclose = spmf.Spmf('FPClose', input_filename='.trans.csv', output_filename='.patterns.csv', arguments=[minsup, 5])
+    fpclose = spmf.Spmf('FPClose', input_filename='.trans.csv', output_filename='.patterns.csv', arguments=[minsup, maxlen])
     fpclose.run()
     fpclose.parse_output()
     os.remove('.trans.csv')
@@ -81,8 +81,11 @@ def mine_patterns(target, other, minsup, supratio):
     for p in fpclose.patterns_:
         items = p[0].split()
         pat = frozenset([target.columns[int(itm)] for itm in items[:-2]])
-        sup = int(items[-1]) / float(len(target))
-        patlist.append({'pattern': pat, 'targetsupport': sup, 'othermatches': [], 'targetmatches': []})
+
+        # TODO: there is a bug in the way SPFM was modified to restict pattern length
+        if len(pat) <= maxlen:
+            sup = int(items[-1]) / float(len(target))
+            patlist.append({'pattern': pat, 'targetsupport': sup, 'othermatches': [], 'targetmatches': []})
 
     # Convert target/other datasets to sets for pattern matching
     othersets = []
@@ -117,3 +120,26 @@ def mine_patterns(target, other, minsup, supratio):
     for p in reversed(selectedpats):
         print(str(p['targetsupport'] - p['othersupport']) + ', ' + str(p['othersupport']) + ', ' + str(p['targetsupport']) + ', ' + str(p['supportratio']) + ', ' + str(p['pattern']))
     return selectedpats
+
+
+def filter_patterns_by_layer(pats, layers):
+    matches = []
+    for p in pats:
+        for elem in p['pattern']:
+            if any(l in elem for l in layers):
+                matches.append(p)
+                break
+    return matches
+
+
+def unique_elements(pats):
+    elems = {}
+    for index, p in enumerate(pats):
+        for e in p['pattern']:
+            if e in elems:
+                elems[e]['patterns'].append(index)
+                elems[e]['targetmatches'].union(p['targetmatches'])
+                elems[e]['othermatches'].union(p['othermatches'])
+            else:
+                elems[e] = {'patterns': [index], 'targetmatches': set(p['targetmatches']), 'othermatches': set(p['othermatches'])}
+    return elems
