@@ -5,6 +5,7 @@ from keras.src.backend.config import standardize_data_format
 from sklearn.preprocessing import MinMaxScaler
 import pandas as pd
 import numpy as np
+import math
 import const
 
 
@@ -367,3 +368,62 @@ def get_ranges(df, zeromin=False, exclude=const.META):
 
 def image_path(trans, index):
     return trans.loc[index]['path']
+
+
+def entropy(pvals):
+    info = 0.0
+    for p in pvals:
+        if p > 0.0:
+            info -= p * math.log2(p)
+    return info
+
+
+def info_gain(cprobs, asup, aprobs):
+    if asup == 0.0:
+        return 0.0
+    nasup = 1.0 - asup
+    naprobs = [1.0 - p for p in aprobs]
+    infoa = asup * entropy(aprobs) + nasup * entropy(naprobs)
+    return entropy(cprobs) - infoa
+
+
+def activation_info(bdf, exclude=const.META):
+
+    # Class statistics
+    classinfo = {'counts': {}, 'support': {}}
+    classes = bdf['label'].unique()
+    classes.sort()
+    for cls in classes:
+        classcount = len(bdf[bdf['label'] == cls])
+        classinfo['counts'][cls] = classcount
+        classinfo['support'][cls] = classcount / len(bdf)
+    classinfo['info'] = entropy(classinfo['support'].values())
+
+    col = bdf.columns.difference(exclude, sort=False)
+    stats = []
+    for c in col:
+        total = 0
+        row = []
+        counts = []
+        supports = []
+        for cls in classes:
+            classcount = len(bdf[(bdf[c] == 1) & (bdf['label'] == cls)])
+            counts.append(classcount)
+            supports.append(classcount / classinfo['counts'][cls])
+            total += classcount
+        row += counts
+        row += supports
+        row.append(total)
+        gsupport = total / len(bdf)
+        row.append(gsupport)
+        row.append(info_gain(classinfo['support'].values(), gsupport, supports))
+        stats.append(row)
+
+    head = []
+    for cls in classes:
+        head.append('count-' + str(cls))
+    for cls in classes:
+        head.append('support-' + str(cls))
+    head += ['gcount', 'gsupport', 'infogain']
+    adf = pd.DataFrame(stats, columns=head, index=col)
+    return classinfo, adf

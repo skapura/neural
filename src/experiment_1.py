@@ -3,7 +3,7 @@ import keras
 from keras import layers, models
 from keras.src.models import Functional
 import pandas as pd
-from data import load_dataset, scale, get_ranges, image_path
+from data import load_dataset, scale, get_ranges, image_path, activation_info
 import patterns as pats
 import mlutil
 from plot import output_features, overlay_heatmap
@@ -50,6 +50,14 @@ def run():
     franges = get_ranges(trans, zeromin=True)
     scaled = scale(trans, output_range=(0, 1))
     bdf = pats.binarize(scaled, 0.5)
+    c, a = activation_info(bdf)
+    a['sortrow0'] = a['support-0'] - (a['support-1'] + a['support-2'])
+    a['sortrow1'] = a['support-1'] - (a['support-0'] + a['support-2'])
+    a['sortrow2'] = a['support-2'] - (a['support-0'] + a['support-1'])
+    b = a[['sortrow0', 'sortrow1', 'sortrow2']].max(axis=1)
+    a['maxsort'] = b
+    sorted = a.sort_values('maxsort')
+
 
     #col = [c for c in bdf.columns if '_1' in c]
     col = bdf.columns.difference(const.META, sort=False)
