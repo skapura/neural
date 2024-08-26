@@ -63,6 +63,14 @@ def layer_subset(layers, last):
     return selected
 
 
+def slice_weights(model, layer, filters):
+    widx = model.layers.index(model.get_layer(layer)) - 1
+    weights = model.layers[widx].weights
+    w = weights[0].numpy()[..., filters]
+    b = weights[1].numpy()[filters]
+    return [w, b]
+
+
 def parse_feature_ref(name):
     tokens = name.split('-')
     return tokens[0], int(tokens[1])

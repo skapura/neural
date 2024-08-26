@@ -67,8 +67,34 @@ def build_model_sel():
     return model
 
 
-def run():
+def build_model_test():
+    inputs = keras.Input(shape=(256, 256, 3))
+    x = layers.Rescaling(1.0 / 255)(inputs)
+    x = layers.Conv2D(3, (3, 3))(x)
+    x = layers.Activation("relu")(x)
+    #x = PatternBranch()(x)
+    x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Conv2D(64, (3, 3))(x)
+    x = layers.Activation('relu')(x)
+    #x = layers.Conv2D(128, (3, 3))(x)
+    #x = layers.Activation('relu')(x)
+    #x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Conv2D(16, (3, 3))(x)
+    x = layers.Activation('relu')(x)
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dense(1, name='prediction', activation='sigmoid')(x)
+    model = Functional(inputs, x)
+    model.compile(optimizer='adam', loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
+                  metrics=[tf.keras.metrics.BinaryAccuracy()])
+    return model
 
+
+def run():
+    model = models.load_model('largeimage16.keras')
+    new_weights = mlutil.slice_weights(model, 'activation', [37, 74, 92])
+    testmodel = build_model_test()
+    testmodel.layers[2].set_weights(new_weights)
+    #testmodel.layers[2].trainable = False
     trainds, valds = load_dataset('images_large')
 
     #model = build_model()
@@ -102,21 +128,22 @@ def run():
     nidx = list(labels[labels != 0].index.values)
     t = vtrans.iloc[midx]['path'].to_list()
     o = vtrans.iloc[nidx]['path'].to_list()
-    valds_sel = load_dataset_selection('images_large/val', selection=(t, o), label_mode='categorical')
+    valds_sel = load_dataset_selection('images_large/val', selection=(t, o), label_mode='binary')
     valds_sel2 = load_dataset_selection('images_large/val', selection=t + o, label_mode='categorical')
     selmodel = models.load_model('submodel_cat.keras')
     model = models.load_model('largeimage16.keras')
-    loss_sel, acc_sel = selmodel.evaluate(valds_sel)
-    ls, acc = model.evaluate(valds_sel2)
+
+    #loss_sel, acc_sel = selmodel.evaluate(valds_sel)
+    #ls, acc = model.evaluate(valds_sel2)
 
     t = trans.iloc[p['targetmatches']]['path'].to_list()
     o = trans.iloc[p['othermatches']]['path'].to_list()
-    trainds_sel = load_dataset_selection('images_large/train', selection=(t, o), label_mode='categorical')
+    trainds_sel = load_dataset_selection('images_large/train', selection=(t, o), label_mode='binary')
     #acc_sel, loss_sel = selmodel.evaluate(trainds_sel)
     #acc, ls = model.evaluate(trainds2)
 
-    submodel = build_model()
-    submodel.fit(trainds_sel, validation_data=valds_sel, epochs=10)
-    submodel.save('submodel_cat.keras')
+    #submodel = build_model()
+    testmodel.fit(trainds_sel, validation_data=valds_sel, epochs=10)
+    testmodel.save('submodel_test.keras')
 
     print(1)
