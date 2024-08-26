@@ -29,6 +29,7 @@ def load_from_directory(
     follow_links=False,
     crop_to_aspect_ratio=False,
     data_format=None,
+    selection=None
 ):
     """Generates a `tf.data.Dataset` from image files in a directory.
 
@@ -343,6 +344,10 @@ def load_dataset(dsname, size=(256, 256), shuffle=True):
     trainds = load_from_directory('datasets/' + dsname + '/train', labels='inferred', label_mode='categorical', image_size=size, shuffle=shuffle)
     valds = load_from_directory('datasets/' + dsname + '/val', labels='inferred', label_mode='categorical', image_size=size, shuffle=shuffle)
     return trainds, valds
+
+
+def load_dataset_selection(dsname, selection, size=(256, 256), shuffle=True):
+    print(1)
 
 
 def scale(df, output_range=(0, 1), exclude=const.META):

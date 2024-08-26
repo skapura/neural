@@ -63,7 +63,7 @@ def build_model_sel():
     x = layers.Dense(1, name='prediction', activation='sigmoid')(x)
     model = Functional(inputs, x)
     model.compile(optimizer='adam', loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
-                  metrics=['accuracy'])
+                  metrics=[tf.keras.metrics.BinaryAccuracy()])
     return model
 
 
@@ -455,17 +455,21 @@ def run():
                                          image_size=(256, 256), shuffle=True, selection=(t, o))
     selmodel = models.load_model('submodel.keras')
     model = models.load_model('largeimage16.keras')
-    acc_sel, loss_sel = selmodel.evaluate(valds_sel)
-    acc, ls = model.evaluate(valds_sel2)
-
+    loss_sel, acc_sel = selmodel.evaluate(valds_sel)
+    ls, acc = model.evaluate(valds_sel2)
 
     t = trans.iloc[p['targetmatches']]['path'].to_list()
     o = trans.iloc[p['othermatches']]['path'].to_list()
     trainds_sel = load_from_directory_test('datasets/' + 'images_large' + '/train', labels='inferred', label_mode='binary',
                                   image_size=(256, 256), shuffle=True, selection=(t, o))
+    trainds2 = load_from_directory_test('datasets/' + 'images_large' + '/train', labels='inferred',
+                                           label_mode='categorical',
+                                           image_size=(256, 256), shuffle=True, selection=(t, o))
+    #acc_sel, loss_sel = selmodel.evaluate(trainds_sel)
+    #acc, ls = model.evaluate(trainds2)
 
     submodel = build_model_sel()
-    submodel.fit(trainds_sel, epochs=10)
+    submodel.fit(trainds_sel, validation_data=valds_sel, epochs=10)
     submodel.save('submodel.keras')
 
     print(1)
