@@ -218,6 +218,37 @@ def load_from_directory(
         follow_links=follow_links,
     )
 
+    # Added: subset selection and binary translation
+    if selection is not None:
+        sel_image_paths = []
+        sel_labels = []
+
+        # Divide into target-other subsets
+        if isinstance(selection, tuple):
+            target = selection[0]
+            other = selection[1]
+
+            class_names = ['other', 'target']
+            for path, label in zip(image_paths, labels):
+                if path in target:
+                    sel_image_paths.append(path)
+                    sel_labels.append(1)
+                elif path in other:
+                    sel_image_paths.append(path)
+                    sel_labels.append(0)
+
+        # Generic image selection
+        else:
+            for path, label in zip(image_paths, labels):
+                if path in selection:
+                    sel_image_paths.append(path)
+                    sel_labels.append(label)
+
+        image_paths = sel_image_paths
+        labels = sel_labels
+        print(1)
+
+
     if label_mode == "binary" and len(class_names) != 2:
         raise ValueError(
             'When passing `label_mode="binary"`, there must be exactly 2 '
@@ -346,8 +377,9 @@ def load_dataset(dsname, size=(256, 256), shuffle=True):
     return trainds, valds
 
 
-def load_dataset_selection(dsname, selection, size=(256, 256), shuffle=True):
-    print(1)
+def load_dataset_selection(dsname, selection, label_mode='categorical', size=(256, 256), shuffle=True):
+    ds = load_from_directory('datasets/' + dsname, labels='inferred', label_mode=label_mode, image_size=size, shuffle=shuffle, selection=selection)
+    return ds
 
 
 def scale(df, output_range=(0, 1), exclude=const.META):
