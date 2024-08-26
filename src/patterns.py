@@ -122,6 +122,18 @@ def mine_patterns(target, other, minsup, supratio, maxlen=5):
     return selectedpats
 
 
+def matches(ds, pattern):
+    imatch = []
+    nonmatch = []
+    for index, row in ds.iterrows():
+        itemset = frozenset(compress(ds.columns, row))
+        if pattern.issubset(itemset):
+            imatch.append(index)
+        else:
+            nonmatch.append(index)
+    return imatch, nonmatch
+
+
 def filter_patterns_by_layer(pats, layers):
     matches = []
     for p in pats:

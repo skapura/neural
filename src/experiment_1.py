@@ -50,30 +50,35 @@ def run():
     franges = get_ranges(trans, zeromin=True)
     scaled = scale(trans, output_range=(0, 1))
     bdf = pats.binarize(scaled, 0.5)
-    c, a = activation_info(bdf)
-    a['sortrow0'] = a['support-0'] - (a['support-1'] + a['support-2'])
-    a['sortrow1'] = a['support-1'] - (a['support-0'] + a['support-2'])
-    a['sortrow2'] = a['support-2'] - (a['support-0'] + a['support-1'])
-    b = a[['sortrow0', 'sortrow1', 'sortrow2']].max(axis=1)
-    a['maxsort'] = b
-    sorted = a.sort_values('maxsort')
+    #c, a = activation_info(bdf)
+    #a['sortrow0'] = a['support-0'] - (a['support-1'] + a['support-2'])
+    #a['sortrow1'] = a['support-1'] - (a['support-0'] + a['support-2'])
+    #a['sortrow2'] = a['support-2'] - (a['support-0'] + a['support-1'])
+    #b = a[['sortrow0', 'sortrow1', 'sortrow2']].max(axis=1)
+    #a['maxsort'] = b
+    #sorted = a.sort_values('maxsort')
 
 
-    #col = [c for c in bdf.columns if '_1' in c]
+    #col = [c for c in bdf.columns if 'activation-' in c]
     col = bdf.columns.difference(const.META, sort=False)
-    #sel = bdf.loc[bdf['label'] == 0.0].drop(const.META, axis=1)[col]
-    #notsel = bdf.loc[bdf['label'] != 0.0].drop(const.META, axis=1)[col]
+    sel = bdf.loc[bdf['label'] == 0.0].drop(const.META, axis=1)[col]
+    notsel = bdf.loc[bdf['label'] != 0.0].drop(const.META, axis=1)[col]
 
     #sel = bdf.loc[bdf['label'] != bdf['predicted']].drop(const.META, axis=1)[col]
     #notsel = bdf.loc[bdf['label'] == bdf['predicted']].drop(const.META, axis=1)[col]
 
-    sel = bdf.loc[(bdf['label'] != bdf['predicted']) & (bdf['label'] == 0.0)].drop(const.META, axis=1)[col]
-    notsel = bdf.loc[(bdf['label'] == bdf['predicted']) & (bdf['label'] == 0.0)].drop(const.META, axis=1)[col]
+    #sel = bdf.loc[(bdf['label'] != bdf['predicted']) & (bdf['label'] == 0.0)].drop(const.META, axis=1)[col]
+    #notsel = bdf.loc[(bdf['label'] == bdf['predicted']) & (bdf['label'] == 0.0)].drop(const.META, axis=1)[col]
 
-    minsup = 0.5
+    minsup = 0.7
     minsupratio = 1.1
     cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
-    pats.unique_elements(cpats)
+    elems = pats.unique_elements(cpats)
+    targetmatches = set()
+    othermatches = set()
+    for e in elems.values():
+        targetmatches.update(e['targetmatches'])
+        othermatches.update(e['othermatches'])
     #cpats = pats.filter_patterns_by_layer(cpats, ['activation_1', 'activation_2', 'activation_3'])
     #mpats2 = pats.filter_patterns_by_layer(mpats, ['activation_1'])
     #path = image_path(trans, 1)
@@ -93,11 +98,15 @@ def run():
     #    filters = outputmodel.filters_in_layer('activation')
     #    output_features(outputmodel, path, filters, prefix, franges)
 
+    #for imageindex in othermatches:
+    #    path = image_path(trans, imageindex)
+    #    prefix = 'session_new/other/' + str(imageindex).zfill(4)
+    #    output_features(outputmodel, path, elems.keys(), prefix, franges)
 
 
-    for i, p in enumerate(cpats[:5]):
+    for i, p in enumerate(cpats[:1]):
         print(i)
-        for j in range(20):
+        for j in range(50):
             imageindex = p['targetmatches'][j]
             path = image_path(trans, imageindex)
             prefix = 'session_new/pat_' + str(i) + '-' + str(imageindex).zfill(4)
