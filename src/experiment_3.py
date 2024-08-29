@@ -12,8 +12,8 @@ import azure
 
 
 def run():
-    model = azure.train()
-    model.save('models/test.keras')
+    model = azure.train(model_path='src/models/test.keras')
+    model.save('src/models/test.keras')
     model = build_model()
     model.save('.untrained.keras')
     #azure.put('activation_binned.csv', dest='Desktop/test.csv')

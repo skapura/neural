@@ -1,6 +1,6 @@
 import tensorflow as tf
 import keras
-from keras import layers
+from keras import layers, models
 from keras.src.models import Functional
 from datetime import datetime
 from azure_data import load_dataset
@@ -29,7 +29,8 @@ def build_model():
 
 def train():
     trainds, valds = load_dataset('images_large')
-    model = build_model()
+    #model = build_model()
+    model = models.load_model('test.keras')
     start = datetime.now()
     model.fit(trainds, validation_data=valds, epochs=2)
     l, a = model.evaluate(valds)
