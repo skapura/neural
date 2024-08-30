@@ -86,7 +86,7 @@ def receptive_field(x, y, layers):
         endx = endx * l['stride'][1] + l['kernel'][1] - 1
         starty = starty * l['stride'][0]
         endy = endy * l['stride'][0] + l['kernel'][0] - 1
-    return (startx, endx), (starty, endy)
+    return (startx, endx + 1), (starty, endy + 1)    # +1 so it's in [start, end) format
 
 
 def heatmap(img_array, model, last_conv_layer_name, pred_index=None):

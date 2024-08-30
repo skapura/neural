@@ -25,8 +25,8 @@ def plot_feature_map(fmap, image, frange, layers):
             v = scaled[y, x]
             if v > 0:
                 xfield, yfield = mlutil.receptive_field(x, y, layers)
-                for xf in range(xfield[0], xfield[1] + 1):
-                    for yf in range(yfield[0], yfield[1] + 1):
+                for xf in range(xfield[0], xfield[1]):
+                    for yf in range(yfield[0], yfield[1]):
                         if mask[yf, xf][2] < v:
                             mask[yf, xf] = (0, 0, v)
 
