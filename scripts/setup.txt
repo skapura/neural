@@ -10,3 +10,7 @@ Cuda compilation tools, release 12.2, V12.2.140
 Build cuda_12.2.r12.2/compiler.33191640_0
 cudnn 9.1
 tf 2.17.0
+
+
+.profile:
+export TF_CPP_MIN_LOG_LEVEL=2

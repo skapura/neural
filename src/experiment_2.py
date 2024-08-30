@@ -8,11 +8,6 @@ import patterns as pats
 import mlutil
 import const
 
-from keras.src.utils import dataset_utils
-from keras.src.backend.config import standardize_data_format
-from keras.src.utils.image_dataset_utils import paths_and_labels_to_dataset
-import numpy as np
-
 
 class PatternBranch(keras.Layer):
     def __init__(self, **kwargs):
@@ -38,7 +33,7 @@ def build_model():
     x = layers.Conv2D(16, (3, 3))(x)
     x = layers.Activation('relu')(x)
     x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(2, name='prediction', activation='softmax')(x)
+    x = layers.Dense(3, name='prediction', activation='softmax')(x)
     model = Functional(inputs, x)
     model.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
                   metrics=['accuracy'])

@@ -1,22 +1,37 @@
-import azure
-import tensorflow as tf
-from keras.src.utils import dataset_utils
-from keras.src.utils.image_dataset_utils import paths_and_labels_to_dataset
-from keras.src.backend.config import standardize_data_format
-import keras
-from keras import layers
-from keras.src.models import Functional
-import numpy as np
-import azure
+from keras import models
+import pandas as pd
+from data import load_dataset, scale
+import patterns as pats
+import const
 
 
 
 def run():
-    model = azure.train(model_path='src/models/test.keras')
-    model.save('src/models/test.keras')
-    model = build_model()
-    model.save('.untrained.keras')
-    #azure.put('activation_binned.csv', dest='Desktop/test.csv')
-    #azure.get('abc.txt')
-    azure.execute('python3 gpu.py')
+    #model = azure.train(model_path='src/models/test.keras')
+    #model.save('src/models/test.keras')
+
+    model = models.load_model('largeimage16.keras')
+    trainds, valds = load_dataset('images_large')
+
+    # Load transactions
+    trans = pd.read_csv('session/trans_feat16.csv', index_col='index')
+    #franges = get_ranges(trans, zeromin=True)
+    scaled = scale(trans, output_range=(0, 1))
+    bdf = pats.binarize(scaled, 0.5)
+    #col = bdf.columns.difference(const.META, sort=False)
+    col = [c for c in bdf.columns if 'activation_3-' in c]
+
+    # church patterns
+    sel = bdf.loc[bdf['label'] == 2.0].drop(const.META, axis=1)[col]
+    notsel = bdf.loc[bdf['label'] != 2.0].drop(const.META, axis=1)[col]
+    minsup = 0.1
+    minsupratio = 1.1
+    cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
+
+    # dog patterns
+    sel = bdf.loc[bdf['label'] == 0.0].drop(const.META, axis=1)[col]
+    notsel = bdf.loc[bdf['label'] != 0.0].drop(const.META, axis=1)[col]
+    minsup = 0.7
+    minsupratio = 1.1
+    cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
     print(1)
