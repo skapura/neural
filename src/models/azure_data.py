@@ -373,6 +373,14 @@ def load_dataset(dsname, size=(256, 256), shuffle=True):
     return trainds, valds
 
 
+def filter_dataset_paths(ds, contains_text, in_flag=True):
+    if in_flag:
+        selected = [r for r in ds.file_paths if contains_text in r]
+    else:
+        selected = [r for r in ds.file_paths if contains_text not in r]
+    return selected
+
+
 def load_dataset_selection(dsname, selection, label_mode='categorical', size=(256, 256), shuffle=True):
     ds = load_from_directory('datasets/' + dsname, labels='inferred', label_mode=label_mode, image_size=size, shuffle=shuffle, selection=selection)
     return ds

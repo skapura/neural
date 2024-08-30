@@ -34,9 +34,11 @@ class PatternModel(models.Model):
         return imagedata
 
 
-def make_output_model(model, layers):
+def make_output_model(model, layers=None):
+    if layers is None:
+        layers = [l.name for l in model.layers if isinstance(l, keras.layers.Activation)]
+        layers.append('prediction')
     outputs = [layer.output for layer in model.layers if layer.name in layers]
-    #outputmodel = models.Model(inputs=model.inputs, outputs=outputs)
     outputmodel = PatternModel(layers, inputs=model.inputs, outputs=outputs)
     return outputmodel
 

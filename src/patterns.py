@@ -12,9 +12,7 @@ def feature_activation_max(feature_map):
     return feature_map.max()
 
 
-def model_to_transactions(model, layers, ds, feature_activation=feature_activation_max):
-    layermodel = mlutil.make_output_model(model, layers)
-
+def model_to_transactions(model, ds, feature_activation=feature_activation_max):
     batch_size = ds._input_dataset._batch_size.numpy()
     transactions = []
     for step, (x_batch, y_batch) in enumerate(ds):
@@ -23,12 +21,16 @@ def model_to_transactions(model, layers, ds, feature_activation=feature_activati
         #    break
         idx = step * batch_size
         batch_paths = ds.file_paths[idx:idx + len(x_batch)]
-        outs = layermodel.predict(x_batch)
+        outs = model.predict(x_batch)
 
         # Iterate over each image in batch
         for i in range(len(x_batch)):
-            pred = np.argmax(outs[-1][i])
-            label = np.argmax(y_batch[i])
+            if len(y_batch[i]) == 1:
+                pred = 1 if outs[-1][i][0] >= 0.5 else 0
+                label = y_batch[i].numpy()[0]
+            else:
+                pred = np.argmax(outs[-1][i])
+                label = np.argmax(y_batch[i])
 
             # Collect outputs from each layer
             trans = []
@@ -42,7 +44,7 @@ def model_to_transactions(model, layers, ds, feature_activation=feature_activati
 
     # Generate dataframe
     head = []
-    for l in layers[:-1]:
+    for l in model.output_names[:-1]:
         layer = model.get_layer(l)
         for i in range(layer.output.shape[-1]):
             head.append(l + '-' + str(i))
