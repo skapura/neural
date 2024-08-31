@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 
 
+
 class PatternModel(models.Model):
 
     def __init__(self, layers, **kwargs):
