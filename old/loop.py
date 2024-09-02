@@ -45,10 +45,10 @@ def buildModel():
     x = layers.Conv2D(128, (3, 3))(x)
     x = layers.Activation("relu")(x)
     x = layers.MaxPooling2D((2, 2))(x)
-    x = layers.Conv2D(64, (3, 3))(x)
-    x = layers.Activation('relu')(x)
-    x = layers.Conv2D(128, (3, 3))(x)
-    x = layers.Activation('relu')(x)
+    #x = layers.Conv2D(64, (3, 3))(x)
+    #x = layers.Activation('relu')(x)
+    #x = layers.Conv2D(128, (3, 3))(x)
+    #x = layers.Activation('relu')(x)
     x = layers.MaxPooling2D((2, 2))(x)
     x = layers.Conv2D(16, (3, 3))(x)
     x = layers.Activation('relu')(x)
@@ -62,7 +62,7 @@ def buildModel():
 
 class PatternModel(keras.Model):
 
-    #@tf.function
+    @tf.function
     def train_step(self, data):
         if len(data) == 3:
             x, y, sample_weight = data
@@ -93,6 +93,9 @@ class PatternModel(keras.Model):
 
         return {m.name: m.result() for m in self.metrics}
 
+    def _run_internal_graph(self, inputs, training=None, mask=None):
+        print(1)
+
 @tf.function
 def trainstep(x, y):
     with tf.GradientTape() as tape:
@@ -105,11 +108,11 @@ def trainstep(x, y):
     return loss_value
 
 
-trainds = mlutil.load_from_directory('images_large/train', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
-valds = mlutil.load_from_directory('images_large/val', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
+trainds = mlutil.load_from_directory('datasets/images_large/train', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
+valds = mlutil.load_from_directory('datasets/images_large/val', labels='inferred', label_mode='categorical', image_size=(256, 256), shuffle=True)
 
 model = buildModel()
-model.fit(trainds, validation_data=valds, epochs=2)
+model.fit(trainds, validation_data=valds, epochs=1)
 test_loss, test_acc = model.evaluate(valds)
 #optimizer = keras.optimizers.SGD(learning_rate=1e-3)
 optimizer = keras.optimizers.Adam(learning_rate=1e-3)
