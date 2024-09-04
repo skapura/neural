@@ -246,8 +246,6 @@ def load_from_directory(
 
         image_paths = sel_image_paths
         labels = sel_labels
-        print(1)
-
 
     if label_mode == "binary" and len(class_names) != 2:
         raise ValueError(
@@ -388,23 +386,32 @@ def filter_dataset_paths(ds, contains_text, in_flag=True):
 def split_dataset_paths(ds, contains_text, label_mode='categorical'):
     matches = filter_dataset_paths(ds, contains_text, in_flag=True)
     notmatches = filter_dataset_paths(ds, contains_text, in_flag=False)
-    splitds = load_dataset_selection('images_large', selection=(matches, notmatches), label_mode=label_mode)
+    splitds = load_dataset_selection(ds, selection=(matches, notmatches), label_mode=label_mode)
     return splitds
 
 
-def load_dataset_selection(dsname, selection, label_mode='categorical', size=(256, 256), shuffle=True):
-    ds = load_from_directory('datasets/' + dsname, labels='inferred', label_mode=label_mode, image_size=size, shuffle=shuffle, selection=selection)
-    return ds
+def load_dataset_selection(ds, selection, label_mode='categorical', size=(256, 256), shuffle=True):
+    if not isinstance(ds, str):
+        splits = ds.file_paths[0].split('/')[:-2]
+        dspath = '/'.join(splits)
+    else:
+        dspath = 'datasets/' + ds
+
+    selds = load_from_directory(dspath, labels='inferred', label_mode=label_mode, image_size=size, shuffle=shuffle, selection=selection)
+    return selds
 
 
-def scale(df, output_range=(0, 1), exclude=const.META):
-    scaler = MinMaxScaler(feature_range=output_range)
+def scale(df, output_range=(0, 1), scaler=None, exclude=const.META):
     selected = df.columns.difference(exclude, sort=False)
-    scaled = scaler.fit_transform(df[selected])
+    if scaler is None:
+        scaler = MinMaxScaler(feature_range=output_range)
+        scaler.fit(df[selected])
+    #scaled = scaler.fit_transform(df[selected])
+    scaled = scaler.transform(df[selected])
     sdf = pd.DataFrame(scaled, columns=selected, index=df.index)
     #a = sdf.astype(int)
     sdf = pd.concat([sdf, df[exclude]], axis=1)
-    return sdf
+    return sdf, scaler
 
 
 def get_ranges(df, zeromin=False, exclude=const.META):

@@ -12,7 +12,7 @@ def feature_activation_max(feature_map):
     return feature_map.max()
 
 
-def model_to_transactions(model, ds, feature_activation=feature_activation_max):
+def model_to_transactions(model, ds, include_meta=True, feature_activation=feature_activation_max):
     batch_size = ds._input_dataset._batch_size.numpy()
     transactions = []
     for step, (x_batch, y_batch) in enumerate(ds):
@@ -25,30 +25,35 @@ def model_to_transactions(model, ds, feature_activation=feature_activation_max):
 
         # Iterate over each image in batch
         for i in range(len(x_batch)):
-            if len(y_batch[i]) == 1:
-                pred = 1 if outs[-1][i][0] >= 0.5 else 0
-                label = y_batch[i].numpy()[0]
-            else:
-                pred = np.argmax(outs[-1][i])
-                label = np.argmax(y_batch[i])
+            if include_meta:
+                if len(y_batch[i]) == 1:
+                    pred = 1 if outs[-1][i][0] >= 0.5 else 0
+                    label = y_batch[i].numpy()[0]
+                else:
+                    pred = np.argmax(outs[-1][i])
+                    label = np.argmax(y_batch[i])
 
             # Collect outputs from each layer
             trans = []
-            for layer in outs[:-1]:
+            layerdata = outs[:-1] if isinstance(outs, list) else [outs]     # Convert to list if only 1 output
+            for layer in layerdata:
 
                 # Collect output from each filter in layer
                 for fi in range(layer.shape[-1]):
                     trans.append(feature_activation(layer[i, :, :, fi]))
-            trans += [pred, label, batch_paths[i]]
+            if include_meta:
+                trans += [pred, label, batch_paths[i]]
             transactions.append(trans)
 
     # Generate dataframe
     head = []
-    for l in model.output_names[:-1]:
+    outnames = model.output_names[:-1] if include_meta else model.output_names
+    for l in outnames:
         layer = model.get_layer(l)
         for i in range(layer.output.shape[-1]):
             head.append(l + '-' + str(i))
-    head += const.META
+    if include_meta:
+        head += const.META
     df = pd.DataFrame(transactions, columns=head)
     df.index.name = 'index'
     return df
