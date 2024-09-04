@@ -79,13 +79,19 @@ def build_model():
 
 @tf.keras.utils.register_keras_serializable()
 class PatternLayer(layers.Layer):
-    def __init__(self, base_model, pattern, pattern_class, **kwargs):
+    def __init__(self, pattern, pattern_class, **kwargs):
         super().__init__(**kwargs)
-        self.base_model = base_model
-        self.base_model.trainable = False
+        #self.base_model = base_model
+        #self.base_model.trainable = False
+        self.base_model = None
         self.pattern = pattern
         self.pattern_class = pattern_class
+        self.pat_model = None
         self.scaler = None
+
+    def build_pattern_branches(self, base_model):
+        self.base_model = base_model
+        self.base_model.trainable = False
 
         # Build feature extraction model for pattern detection
         player = base_model.get_layer('activation')
@@ -140,17 +146,32 @@ class PatternLayer(layers.Layer):
 
         print(1)
 
-    #def save_assets(self, inner_path):
-    #    joblib.dump(self.scaler, os.path.join(inner_path, 'scaler.save'))
+    def build_from_config(self, config):
+        print('build')
 
-    #def load_assets(self, inner_path):
-    #    self.scaler = joblib.load(os.path.join(inner_path, 'scaler.save'))
+    def compile_from_config(self, config):
+        print('compile')
 
+    def load_own_variables(self, store):
+        print('vars')
+
+    def save_assets(self, inner_path):
+        joblib.dump(self.scaler, os.path.join(inner_path, 'scaler.save'))
+        self.base_model.save(os.path.join(inner_path, 'base_model.keras'))
+        self.pat_model.save(os.path.join(inner_path, 'pat_model.keras'))
+
+    def load_assets(self, inner_path):
+        self.scaler = joblib.load(os.path.join(inner_path, 'scaler.save'))
+        self.base_model = models.load_model(os.path.join(inner_path, 'base_model.keras'))
+        self.pat_model = models.load_model(os.path.join(inner_path, 'pat_model.keras'))
 
     #def get_config(self):
     #    base_config = super().get_config()
     #    config = {'pattern_set': keras.saving.serialize_keras_object(self.pattern_set)}
     #    return {**base_config, **config}
+
+    def compute_output_shape(self, input_shape):
+        return [None, 3]
 
     def call(self, inputs, training=False):
         # if training:    # Only training pattern branches
@@ -166,67 +187,70 @@ class PatternLayer(layers.Layer):
         #     selfeats = feats.numpy()[..., em]
         #     predictions = self.pat_model(selfeats)
         #if len(inputs) == 1 and isinstance(inputs[0], tf.SymbolicTensor):
+
         feats = self.pat_feat_extract(inputs)
         predictions = self.base_model_prediction(feats)
         return predictions
 
 
-class PatternModel(models.Model):
-    def __init__(self, base_model, pattern, pattern_class, **kwargs):
-        x = PatternLayer(base_model, pattern, pattern_class)(base_model.input)
-        super().__init__(base_model.input, x, **kwargs)
+#class PatternModel(models.Model):
+#    def __init__(self, base_model, pattern, pattern_class, **kwargs):
+#        player = PatternLayer(pattern, pattern_class)
+#        player.build_pattern_branches(base_model)
+#        x = player(base_model.input)
+#        super().__init__(base_model.input, x, **kwargs)
 
-    def fit_pattern(self, trainds, **kwargs):
-        player = self.layers[-1]
-        pattern = set(player.pattern)
-        classname = trainds.class_names[player.pattern_class]
+def fit_pattern(player, trainds, **kwargs):
+    #player = self.layers[-1]
+    pattern = set(player.pattern)
+    classname = trainds.class_names[player.pattern_class]
+
+    #layermodel = mlutil.make_output_model(player.base_model)
+    #trans = pats.model_to_transactions(layermodel, trainds, include_meta=True)
+    #trans.to_csv('session/trans_feat.csv')
+    trans = pd.read_csv('session/trans_feat_full.csv', index_col='index')
+    scaled, player.scaler = data.scale(trans, output_range=(0, 1))
+    return
+
+    bdf = pats.binarize(scaled, 0.5)
+
+    matches, nonmatches = pats.matches(bdf, pattern)
+    matchds = data.load_dataset_selection(trainds, trans.loc[matches]['path'].to_list())
+    binds = data.split_dataset_paths(matchds, classname, label_mode='binary')
+
+    valbinds = None
+    if 'validation_data' in kwargs:
+        valds = kwargs['validation_data']
 
         #layermodel = mlutil.make_output_model(player.base_model)
-        #trans = pats.model_to_transactions(layermodel, trainds, include_meta=True)
-        #trans.to_csv('session/trans_feat.csv')
-        trans = pd.read_csv('session/trans_feat_full.csv', index_col='index')
-        scaled, player.scaler = data.scale(trans, output_range=(0, 1))
-        return
-        #joblib.dump(player.scaler, 'session/scaler.save')
-        #scaler2 = joblib.load('session/scaler.save')
+        #trans = pats.model_to_transactions(layermodel, valds, include_meta=True)
+        #trans.to_csv('session/vtrans_feat_full.csv')
+        trans = pd.read_csv('session/vtrans_feat_full.csv', index_col='index')
+        scaled, _ = data.scale(trans, output_range=(0, 1), scaler=scaler)
         bdf = pats.binarize(scaled, 0.5)
 
         matches, nonmatches = pats.matches(bdf, pattern)
-        matchds = data.load_dataset_selection(trainds, trans.loc[matches]['path'].to_list())
-        binds = data.split_dataset_paths(matchds, classname, label_mode='binary')
+        matchds = data.load_dataset_selection(valds, trans.loc[matches]['path'].to_list())
+        valbinds = data.split_dataset_paths(matchds, classname, label_mode='binary')
 
-        valbinds = None
-        if 'validation_data' in kwargs:
-            valds = kwargs['validation_data']
-
-            #layermodel = mlutil.make_output_model(player.base_model)
-            #trans = pats.model_to_transactions(layermodel, valds, include_meta=True)
-            #trans.to_csv('session/vtrans_feat_full.csv')
-            trans = pd.read_csv('session/vtrans_feat_full.csv', index_col='index')
-            scaled, _ = data.scale(trans, output_range=(0, 1), scaler=scaler)
-            bdf = pats.binarize(scaled, 0.5)
-
-            matches, nonmatches = pats.matches(bdf, pattern)
-            matchds = data.load_dataset_selection(valds, trans.loc[matches]['path'].to_list())
-            valbinds = data.split_dataset_paths(matchds, classname, label_mode='binary')
-
-        player.pat_model.fit(binds, validation_data=valbinds, epochs=2)
-        print(1)
+    player.pat_model.fit(binds, validation_data=valbinds, epochs=2)
+    print(1)
 
 
 def run():
+    base_model = models.load_model('largeimage16.keras', compile=True)
+    player = PatternLayer(['activation-1', 'activation-2'], 1)
+    player.build_pattern_branches(base_model)
+    x = player(base_model.input)
+    pmodel = Model(inputs=base_model.input, outputs=x)
 
-
-    model = models.load_model('largeimage16.keras', compile=True)
-    #x = PatternLayer(model, ['activation-0', 'activation-1'])(model.input)
-    #pmodel = PatternModel(model.input, x)
-    pmodel = PatternModel(model, ['activation-1', 'activation-2'], 1)
-    pmodel.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
-                  metrics=['accuracy'], run_eagerly=True)
+    #pmodel = PatternModel(model, ['activation-1', 'activation-2'], 1)
+    #pmodel.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+    #              metrics=['accuracy'], run_eagerly=True)
     trainds, valds = data.load_dataset('images_large')
-    pmodel.fit_pattern(trainds, validation_data=valds, epochs=3)
+    fit_pattern(player, trainds, validation_data=valds, epochs=3)
     pmodel.save('session/testpatmodel.keras')
-    pmodel2 = models.load_model('session/testpatmodel.keras')
+    pmodel2 = models.load_model('session/testpatmodel.keras', compile=False)
 
     #test_loss, test_acc = model.evaluate(test_images, test_labels, verbose=2)
     results = model.evaluate(valds)
