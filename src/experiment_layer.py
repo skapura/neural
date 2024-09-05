@@ -6,10 +6,12 @@ import pandas as pd
 import os
 import numpy as np
 import joblib
+import shutil
 import mlutil
 import data
 import patterns as pats
 import const
+from pattern_model import PatternLayer
 
 
 @tf.keras.utils.register_keras_serializable()
@@ -78,33 +80,40 @@ def build_model():
 
 
 @tf.keras.utils.register_keras_serializable()
-class PatternLayer(layers.Layer):
+class PatternLayer2(layers.Layer):
     def __init__(self, pattern, pattern_class, **kwargs):
         super().__init__(**kwargs)
-        #self.base_model = base_model
-        #self.base_model.trainable = False
         self.base_model = None
+        self.pat_feat_extract = None
+        self.base_model_prediction = None
         self.pattern = pattern
         self.pattern_class = pattern_class
+        self.pre_pat_model = None
         self.pat_model = None
         self.scaler = None
+
+    def build_base_segments(self):
+
+        # Build feature extraction model for pattern detection
+        player = self.base_model.get_layer('activation')
+        self.pat_feat_extract = Model(inputs=self.base_model.inputs, outputs=[player.output])
+
+        # Build remainder of base model after pattern detection
+        nextlayer = self.base_model.layers.index(player) + 1
+        self.base_model_prediction = Model(inputs=self.base_model.layers[nextlayer].input, outputs=self.base_model.output)
+
 
     def build_pattern_branches(self, base_model):
         self.base_model = base_model
         self.base_model.trainable = False
+        #player = self.base_model.get_layer('activation')
 
-        # Build feature extraction model for pattern detection
-        player = base_model.get_layer('activation')
-        self.pat_feat_extract = Model(inputs=base_model.inputs, outputs=[player.output])
-
-        # Build remainder of base model after pattern detection
-        nextlayer = base_model.layers.index(player) + 1
-        self.base_model_prediction = Model(inputs=base_model.layers[nextlayer].input, outputs=base_model.output)
+        self.build_base_segments()
 
         # Pre-pattern branch
-        pidx = base_model.layers.index(base_model.get_layer('activation'))
-        player = base_model.layers[pidx - 2]    # layer just before pattern branch
-        self.pre_pat_model = Model(inputs=base_model.inputs, outputs=player.output)
+        pidx = self.base_model.layers.index(self.base_model.get_layer('activation'))
+        player = self.base_model.layers[pidx - 2]    # layer just before pattern branch
+        self.pre_pat_model = Model(inputs=self.base_model.inputs, outputs=player.output)
 
         # Pattern selection layer
         cfg = base_model.layers[pidx - 1].get_config()    # full conv2d layer config
@@ -146,24 +155,38 @@ class PatternLayer(layers.Layer):
 
         print(1)
 
+    def get_build_config(self):
+        build_config = {"output_shape": self.output.shape}
+        return build_config
+
     def build_from_config(self, config):
+        self.build_output_shape = config['output_shape']
         print('build')
 
-    def compile_from_config(self, config):
-        print('compile')
+    #def compile_from_config(self, config):
+    #    print('compile')
 
-    def load_own_variables(self, store):
-        print('vars')
+    #def save_own_variables(self, store):
+    #    super().save_own_variables(store)
+    #    # Stores the value of the variable upon saving
+    #    #store["base_model"] = self.base_model
+
+    #def load_own_variables(self, store):
+    #    #self.base_model = store['base_model']
+    #    print('vars')
 
     def save_assets(self, inner_path):
         joblib.dump(self.scaler, os.path.join(inner_path, 'scaler.save'))
+        self.base_model.trainable = True
         self.base_model.save(os.path.join(inner_path, 'base_model.keras'))
         self.pat_model.save(os.path.join(inner_path, 'pat_model.keras'))
 
     def load_assets(self, inner_path):
         self.scaler = joblib.load(os.path.join(inner_path, 'scaler.save'))
         self.base_model = models.load_model(os.path.join(inner_path, 'base_model.keras'))
+        self.build_base_segments()
         self.pat_model = models.load_model(os.path.join(inner_path, 'pat_model.keras'))
+        print('assets')
 
     #def get_config(self):
     #    base_config = super().get_config()
@@ -171,7 +194,11 @@ class PatternLayer(layers.Layer):
     #    return {**base_config, **config}
 
     def compute_output_shape(self, input_shape):
-        return [None, 3]
+        if self.base_model is None:
+            return self.build_output_shape
+        else:
+            return self.base_model.output_shape
+        #return [None, 3]
 
     def call(self, inputs, training=False):
         # if training:    # Only training pattern branches
@@ -193,13 +220,6 @@ class PatternLayer(layers.Layer):
         return predictions
 
 
-#class PatternModel(models.Model):
-#    def __init__(self, base_model, pattern, pattern_class, **kwargs):
-#        player = PatternLayer(pattern, pattern_class)
-#        player.build_pattern_branches(base_model)
-#        x = player(base_model.input)
-#        super().__init__(base_model.input, x, **kwargs)
-
 def fit_pattern(player, trainds, **kwargs):
     #player = self.layers[-1]
     pattern = set(player.pattern)
@@ -210,7 +230,7 @@ def fit_pattern(player, trainds, **kwargs):
     #trans.to_csv('session/trans_feat.csv')
     trans = pd.read_csv('session/trans_feat_full.csv', index_col='index')
     scaled, player.scaler = data.scale(trans, output_range=(0, 1))
-    return
+    #return
 
     bdf = pats.binarize(scaled, 0.5)
 
@@ -226,30 +246,46 @@ def fit_pattern(player, trainds, **kwargs):
         #trans = pats.model_to_transactions(layermodel, valds, include_meta=True)
         #trans.to_csv('session/vtrans_feat_full.csv')
         trans = pd.read_csv('session/vtrans_feat_full.csv', index_col='index')
-        scaled, _ = data.scale(trans, output_range=(0, 1), scaler=scaler)
+        scaled, _ = data.scale(trans, output_range=(0, 1), scaler=player.scaler)
         bdf = pats.binarize(scaled, 0.5)
 
         matches, nonmatches = pats.matches(bdf, pattern)
         matchds = data.load_dataset_selection(valds, trans.loc[matches]['path'].to_list())
         valbinds = data.split_dataset_paths(matchds, classname, label_mode='binary')
 
-    player.pat_model.fit(binds, validation_data=valbinds, epochs=2)
+    player.pat_model.fit(binds, validation_data=valbinds, epochs=1)
     print(1)
 
 
 def run():
     base_model = models.load_model('largeimage16.keras', compile=True)
     player = PatternLayer(['activation-1', 'activation-2'], 1)
-    player.build_pattern_branches(base_model)
+    player.build_branch(base_model)
     x = player(base_model.input)
     pmodel = Model(inputs=base_model.input, outputs=x)
-
-    #pmodel = PatternModel(model, ['activation-1', 'activation-2'], 1)
     #pmodel.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
-    #              metrics=['accuracy'], run_eagerly=True)
+    #              metrics=['accuracy'])
+    pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+                  metrics=['accuracy'])
     trainds, valds = data.load_dataset('images_large')
+    player.fit(trainds, validation_data=valds, epochs=1)
+
+    #results = base_model.evaluate(valds)
+    presults = pmodel.evaluate(valds)
+
+    pmodel.save('session/testpatmodel.keras')
+    pmodel2 = models.load_model('session/testpatmodel.keras')
+
     fit_pattern(player, trainds, validation_data=valds, epochs=3)
     pmodel.save('session/testpatmodel.keras')
+    #save_model(pmodel, 'session/testpatmodel.keras')
+    #pmodel.save('session/testpatmodel.keras')
+    #pmodel.layers[-1].base_model.save('session/base.keras')
+    #pmodel.layers[-1].pat_model.save('session/pat.keras')
+    #m = models.load_model('session/testpatmodel.keras', compile=False)
+    #b = models.load_model('session/base.keras', compile=False)
+    #p = models.load_model('session/pat.keras')
+    #load_model('session/testpatmodel.keras')
     pmodel2 = models.load_model('session/testpatmodel.keras', compile=False)
 
     #test_loss, test_acc = model.evaluate(test_images, test_labels, verbose=2)
