@@ -258,18 +258,18 @@ def fit_pattern(player, trainds, **kwargs):
 
 
 def run():
-    base_model = models.load_model('largeimage16.keras', compile=True)
-    player = PatternLayer(['activation-1', 'activation-2'], 1)
-    player.build_branch(base_model)
-    x = player(base_model.input)
-    pmodel = Model(inputs=base_model.input, outputs=x)
-    #pmodel.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
-    #              metrics=['accuracy'])
-    pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
-                  metrics=['accuracy'])
     trainds, valds = data.load_dataset('images_large')
-    player.fit(trainds, validation_data=valds, epochs=1)
-
+    #base_model = models.load_model('largeimage16.keras', compile=True)
+    #player = PatternLayer(['activation-1', 'activation-2'], 1)
+    #player.build_branch(base_model)
+    #x = player(base_model.input)
+    #pmodel = Model(inputs=base_model.input, outputs=x)
+    #pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+    #              metrics=['accuracy'])
+    #player.fit(trainds, validation_data=valds, epochs=1)
+    #pmodel.save('session/testpatmodel.keras')
+    pmodel = models.load_model('session/testpatmodel.keras', compile=True)
+    tf.config.run_functions_eagerly(True)
     #results = base_model.evaluate(valds)
     presults = pmodel.evaluate(valds)
 

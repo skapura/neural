@@ -15,6 +15,7 @@ class PatternLayer(layers.Layer):
     def __init__(self, pattern, pattern_class, **kwargs):
         super().__init__(**kwargs)
         self.pattern = pattern
+        self.pattern_feats = [int(mlutil.parse_feature_ref(e)[1]) for e in self.pattern]
         self.pattern_class = pattern_class
         self.layername = mlutil.parse_feature_ref(pattern[0])[0]
         self.build_output_shape = [None, 1]
@@ -41,8 +42,8 @@ class PatternLayer(layers.Layer):
 
     def load_assets(self, inner_path):
         self.scaler = joblib.load(os.path.join(inner_path, 'scaler.save'))
-        self.base_model = models.load_model(os.path.join(inner_path, 'base_model.keras'))
-        self.pat_model = models.load_model(os.path.join(inner_path, 'pat_model.keras'))
+        self.base_model = models.load_model(os.path.join(inner_path, 'base_model.keras'), compile=True)
+        self.pat_model = models.load_model(os.path.join(inner_path, 'pat_model.keras'), compile=True)
         self.build_model_segments()
 
     def compute_output_shape(self, input_shape):
@@ -75,7 +76,7 @@ class PatternLayer(layers.Layer):
         x = layers.Activation(**cfg)(x)
 
         # Pattern branch after pattern filter
-        x = layers.Conv2D(16, (3, 3))(x)
+        x = layers.Conv2D(16, (3, 3), name='pat_hook')(x)
         x = layers.Activation('relu')(x)
         x = layers.GlobalAveragePooling2D()(x)
         x = layers.Dense(1, name='prediction', activation='sigmoid')(x)
@@ -98,13 +99,12 @@ class PatternLayer(layers.Layer):
         self.base_model_prediction = Model(inputs=self.base_model.layers[nextlayer].input, outputs=self.base_model.output)
 
         # Pattern branch
-        branchidx = self.base_model.layers.index(self.base_model.get_layer(self.layername))
-        branchlayer = self.base_model.layers[branchidx]
-        patbranchlayer = self.pat_model.get_layer(branchlayer.name)
-        self.pat_model_prediction = Model(inputs=patbranchlayer.input, outputs=self.pat_model.output)
-        #pidx = self.base_model.layers.index(self.base_model.get_layer('activation'))
-        #player = self.base_model.layers[pidx - 2]    # layer just before pattern branch
-        #self.pre_pat_model = Model(inputs=self.base_model.inputs, outputs=player.output)
+        #branchidx = self.base_model.layers.index(self.base_model.get_layer(self.layername))
+        #branchlayer = self.base_model.layers[branchidx]
+        #patbranchlayer = self.pat_model.get_layer(branchlayer.name)
+        #self.pat_model_prediction = Model(inputs=patbranchlayer.input, outputs=self.pat_model.output)
+        hooklayer = self.pat_model.get_layer('pat_hook')
+        self.pat_model_prediction = Model(inputs=hooklayer.input, outputs=self.pat_model.output)
 
         print(1)
 
@@ -140,5 +140,11 @@ class PatternLayer(layers.Layer):
 
     def call(self, inputs):
         feats = self.pat_feat_extract(inputs)
+
+        patpred = self.pat_model(inputs)
+
+        selfeats = feats.numpy()[..., self.pattern_feats]
+        branchpred = self.pat_model_prediction(selfeats)
+
         predictions = self.base_model_prediction(feats)
         return predictions
