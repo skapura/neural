@@ -1,3 +1,4 @@
+import tensorflow as tf
 import pandas as pd
 import numpy as np
 import csv
@@ -9,7 +10,24 @@ import mlutil
 
 
 def feature_activation_max(feature_map):
-    return feature_map.max()
+    if isinstance(feature_map, tf.Tensor):
+        return tf.reduce_max(feature_map).numpy()
+    else:
+        return feature_map.max()
+
+
+def features_to_transactions(features, layer_name, feature_activation=feature_activation_max):
+    transactions = []
+    for finput in features:
+        trans = []
+        for fi in range(finput.shape[-1]):
+            trans.append(feature_activation(finput[:, :, fi]))
+        transactions.append(trans)
+
+    head = [layer_name + '-' + str(i) for i in range(features.shape[-1])]
+    df = pd.DataFrame(transactions, columns=head)
+    df.index.name = 'index'
+    return df
 
 
 def model_to_transactions(model, ds, include_meta=True, feature_activation=feature_activation_max):

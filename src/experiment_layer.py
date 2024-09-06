@@ -11,7 +11,7 @@ import mlutil
 import data
 import patterns as pats
 import const
-from pattern_model import PatternLayer
+from pattern_model import PatternLayer, evaluate
 
 
 @tf.keras.utils.register_keras_serializable()
@@ -269,10 +269,10 @@ def run():
     #player.fit(trainds, validation_data=valds, epochs=1)
     #pmodel.save('session/testpatmodel.keras')
     pmodel = models.load_model('session/testpatmodel.keras', compile=True)
-    tf.config.run_functions_eagerly(True)
+    #tf.config.run_functions_eagerly(True)
     #results = base_model.evaluate(valds)
-    presults = pmodel.evaluate(valds)
-
+    #presults = pmodel.evaluate(valds)
+    evaluate(pmodel, trainds)
     pmodel.save('session/testpatmodel.keras')
     pmodel2 = models.load_model('session/testpatmodel.keras')
 

@@ -2,6 +2,7 @@ import tensorflow as tf
 from keras import layers, models
 from keras.src.models import Model
 import pandas as pd
+import numpy as np
 import joblib
 import os
 import data
@@ -17,7 +18,7 @@ class PatternLayer(layers.Layer):
         self.pattern = pattern
         self.pattern_feats = [int(mlutil.parse_feature_ref(e)[1]) for e in self.pattern]
         self.pattern_class = pattern_class
-        self.layername = mlutil.parse_feature_ref(pattern[0])[0]
+        self.layer_name = mlutil.parse_feature_ref(pattern[0])[0]
         self.build_output_shape = [None, 1]
         self.base_model = None
         self.pat_model = None
@@ -56,8 +57,7 @@ class PatternLayer(layers.Layer):
         self.base_model = base_model
         self.base_model.trainable = False
 
-        # player = self.base_model.get_layer(self.layername)
-        pidx = self.base_model.layers.index(self.base_model.get_layer(self.layername))
+        pidx = self.base_model.layers.index(self.base_model.get_layer(self.layer_name))
         beforepat = self.base_model.layers[pidx - 2]
 
         # Pattern-filter conv2d
@@ -69,7 +69,7 @@ class PatternLayer(layers.Layer):
 
         # Pattern-filter activation
         filteridx = [int(e.split('-')[1]) for e in self.pattern]
-        w = mlutil.slice_weights(base_model, self.layername, filteridx)
+        w = mlutil.slice_weights(base_model, self.layer_name, filteridx)
         patlayer.set_weights(w)
         cfg = base_model.layers[pidx].get_config()
         cfg.pop('name', None)
@@ -91,7 +91,7 @@ class PatternLayer(layers.Layer):
     def build_model_segments(self):
 
         # Build feature extraction model for pattern detection
-        player = self.base_model.get_layer(self.layername)
+        player = self.base_model.get_layer(self.layer_name)
         self.pat_feat_extract = Model(inputs=self.base_model.inputs, outputs=player.output)
 
         # Build remainder of base model after pattern detection
@@ -140,6 +140,36 @@ class PatternLayer(layers.Layer):
 
     def call(self, inputs):
         feats = self.pat_feat_extract(inputs)
+        predictions = self.base_model_prediction(feats)
+        return predictions
+
+        trans = pats.features_to_transactions(feats, self.layer_name)
+
+        firstindex = list(self.scaler.feature_names_in_).index(self.layer_name + '-0')
+        lastindex = list(self.scaler.feature_names_in_).index(self.layer_name + '-' + str(feats.shape[-1] - 1)) + 1
+        self.scaler.feature_names_in_ = self.scaler.feature_names_in_[firstindex:lastindex]
+        self.scaler.min_ = self.scaler.min_[firstindex:lastindex]
+        self.scaler.scale_ = self.scaler.scale_[firstindex:lastindex]
+        self.scaler.data_max_ = self.scaler.data_max_[firstindex:lastindex]
+        self.scaler.data_min_ = self.scaler.data_min_[firstindex:lastindex]
+        self.scaler.data_range_ = self.scaler.data_range_[firstindex:lastindex]
+        self.scaler.n_features_in_ = len(self.scaler.feature_names_in_)
+        scaled, _ = data.scale(trans, output_range=(0, 1), scaler=self.scaler, exclude=[])
+        bdf = pats.binarize(scaled, 0.5, exclude=[])
+        matches, nonmatches = pats.matches(bdf, set(self.pattern))
+
+        patpreds = []
+        basepreds = []
+        for i, finput in enumerate(feats):
+            if i in matches:
+                selfeats = finput.numpy()[..., self.pattern_feats]
+                branchpred = self.pat_model_prediction(np.asarray([selfeats]))
+                patpreds.append(branchpred)
+            else:
+                basepred = self.base_model_prediction(np.asarray([finput]))
+                basepreds.append(basepred)
+
+
 
         patpred = self.pat_model(inputs)
 
@@ -148,3 +178,21 @@ class PatternLayer(layers.Layer):
 
         predictions = self.base_model_prediction(feats)
         return predictions
+
+
+def evaluate(model, ds):
+    #layermodel = mlutil.make_output_model(player.base_model)
+    #trans = pats.model_to_transactions(layermodel, trainds, include_meta=True)
+    #trans.to_csv('session/trans_feat.csv')
+    patlayer = model.layers[-1]
+    classname = ds.class_names[patlayer.pattern_class]
+    trans = pd.read_csv('session/trans_feat_full.csv', index_col='index')
+    scaled, _ = data.scale(trans, output_range=(0, 1), scaler=patlayer.scaler)
+    bdf = pats.binarize(scaled, 0.5)
+    matches, nonmatches = pats.matches(bdf, set(patlayer.pattern))
+    matchds = data.load_dataset_selection(ds, trans.loc[matches]['path'].to_list())
+    patds = data.split_dataset_paths(matchds, classname, label_mode='binary')
+    baseds = data.load_dataset_selection(ds, trans.loc[nonmatches]['path'].to_list())
+    patlayer.pat_model.evaluate(patds)
+    patlayer.base_model.evaluate(baseds)
+    print(1)
