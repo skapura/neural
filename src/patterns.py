@@ -183,15 +183,24 @@ def unique_elements(pats):
     return elems
 
 
-def preprocess(model, ds, trans_path=None):
+def preprocess(pat_layer, ds, trans_path=None):
+
+    # Load transactions
     if trans_path is None or not os.path.exists(trans_path):
-        layermodel = mlutil.make_output_model(model.pat_layer.base_model)
+        layermodel = mlutil.make_output_model(pat_layer.base_model)
         trans = model_to_transactions(layermodel, ds, include_meta=True)
         if trans is not None:
             trans.to_csv(trans_path)
     else:
         trans = pd.read_csv(trans_path, index_col='index')
-    scaled, _ = data.scale(trans, output_range=(0, 1), scaler=model.pat_layer.scaler)
+
+    # Scale data
+    if pat_layer.scaler is None:
+        scaled, pat_layer.scaler = data.scale(trans, output_range=(0, 1))
+    else:
+        scaled, _ = data.scale(trans, output_range=(0, 1), scaler=pat_layer.scaler)
+
+    #scaled, _ = data.scale(trans, output_range=(0, 1), scaler=model.pat_layer.scaler)
     bdf = binarize(scaled, 0.5)
     return bdf
 

@@ -51,18 +51,18 @@ def build_pat_model(trainds, valds):
 
 def run():
     trainds, valds = data.load_dataset('images_large')
-    base_model = models.load_model('largeimage16.keras', compile=True)
+    #base_model = models.load_model('largeimage16.keras', compile=True)
 
-    pmodel = PatternModel.make(base_model, ['activation-1', 'activation-2'], 1)
+    #pmodel = PatternModel.make(base_model, ['activation-1', 'activation-2'], 1)
 
-    pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
-                  metrics=['accuracy'])
-    #pmodel.fit(trainds, validation_data=valds, epochs=1)
+    #pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+    #              metrics=['accuracy'])
+    #pmodel.fit(trainds, trans_path='session/trans_feat_full.csv', validation_data=valds, val_path='session/vtrans_feat_full.csv', epochs=1)
     #pmodel.save('session/testpatmodel_class.keras')
 
-    pmodel2 = models.load_model('session/testpatmodel_class.keras', compile=True)
+    pmodel = models.load_model('session/testpatmodel_class.keras', compile=True)
 
-    pmodel2.evaluate(trainds, 'session/trans_feat_full.csv')
+    pmodel.evaluate(trainds, 'session/trans_feat_full.csv')
     print(1)
 
 

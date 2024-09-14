@@ -107,25 +107,20 @@ class PatternLayer(layers.Layer):
         classname = ds.class_names[self.pattern_class]
 
         # Filter training data
-        trans = pd.read_csv('session/trans_feat_full.csv', index_col='index')
-        if self.scaler is None:
-            scaled, self.scaler = data.scale(trans, output_range=(0, 1))
-        else:
-            scaled, _ = data.scale(trans, output_range=(0, 1), scaler=self.scaler)
-        bdf = pats.binarize(scaled, 0.5)
+        transpath = kwargs['trans_path'] if 'trans_path' in kwargs else None
+        bdf = pats.preprocess(self, ds, transpath)
         matches, nonmatches = pats.matches(bdf, pattern)
-        matchds = data.load_dataset_selection(ds, trans.loc[matches]['path'].to_list())
+        matchds = data.load_dataset_selection(ds, bdf.loc[matches]['path'].to_list())
         binds = data.split_dataset_paths(matchds, classname, label_mode='binary')
 
         # Filter validation data
         valbinds = None
         if 'validation_data' in kwargs:
             valds = kwargs['validation_data']
-            trans = pd.read_csv('session/vtrans_feat_full.csv', index_col='index')
-            scaled, _ = data.scale(trans, output_range=(0, 1), scaler=self.scaler)
-            bdf = pats.binarize(scaled, 0.5)
+            valpath = kwargs['val_path'] if 'val_path' in kwargs else None
+            bdf = pats.preprocess(self, valds, valpath)
             matches, nonmatches = pats.matches(bdf, pattern)
-            matchds = data.load_dataset_selection(valds, trans.loc[matches]['path'].to_list())
+            matchds = data.load_dataset_selection(valds, bdf.loc[matches]['path'].to_list())
             valbinds = data.split_dataset_paths(matchds, classname, label_mode='binary')
 
         # Train pattern branch
@@ -193,26 +188,9 @@ class PatternModel(Model):
         self.pat_layer.fit(ds, **kwargs)
 
     def evaluate(self, ds, trans=None):
-        bdf = pats.preprocess(self, ds, trans)
+        bdf = pats.preprocess(self.pat_layer, ds, trans)
         patds, baseds = pats.match_dataset(ds, bdf, self.pat_layer.pattern, self.pat_layer.pattern_class)
         p = self.pat_layer.pat_model.evaluate(patds, return_dict=True)
         b = self.pat_layer.base_model.evaluate(baseds, return_dict=True)
         return {'base': b, 'pattern': p}
 
-
-def evaluate(model, ds):
-    #layermodel = mlutil.make_output_model(player.base_model)
-    #trans = pats.model_to_transactions(layermodel, trainds, include_meta=True)
-    #trans.to_csv('session/trans_feat.csv')
-    patlayer = model.layers[-1]
-    classname = ds.class_names[patlayer.pattern_class]
-    trans = pd.read_csv('session/trans_feat_full.csv', index_col='index')
-    scaled, _ = data.scale(trans, output_range=(0, 1), scaler=patlayer.scaler)
-    bdf = pats.binarize(scaled, 0.5)
-    matches, nonmatches = pats.matches(bdf, set(patlayer.pattern))
-    matchds = data.load_dataset_selection(ds, trans.loc[matches]['path'].to_list())
-    patds = data.split_dataset_paths(matchds, classname, label_mode='binary')
-    baseds = data.load_dataset_selection(ds, trans.loc[nonmatches]['path'].to_list())
-    patlayer.pat_model.evaluate(patds)
-    patlayer.base_model.evaluate(baseds)
-    print(1)
