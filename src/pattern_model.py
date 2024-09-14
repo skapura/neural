@@ -99,14 +99,8 @@ class PatternLayer(layers.Layer):
         self.base_model_prediction = Model(inputs=self.base_model.layers[nextlayer].input, outputs=self.base_model.output)
 
         # Pattern branch
-        #branchidx = self.base_model.layers.index(self.base_model.get_layer(self.layername))
-        #branchlayer = self.base_model.layers[branchidx]
-        #patbranchlayer = self.pat_model.get_layer(branchlayer.name)
-        #self.pat_model_prediction = Model(inputs=patbranchlayer.input, outputs=self.pat_model.output)
         hooklayer = self.pat_model.get_layer('pat_hook')
         self.pat_model_prediction = Model(inputs=hooklayer.input, outputs=self.pat_model.output)
-
-        print(1)
 
     def fit(self, ds, **kwargs):
         pattern = set(self.pattern)
@@ -169,8 +163,6 @@ class PatternLayer(layers.Layer):
                 basepred = self.base_model_prediction(np.asarray([finput]))
                 basepreds.append(basepred)
 
-
-
         patpred = self.pat_model(inputs)
 
         selfeats = feats.numpy()[..., self.pattern_feats]
@@ -178,6 +170,34 @@ class PatternLayer(layers.Layer):
 
         predictions = self.base_model_prediction(feats)
         return predictions
+
+
+@tf.keras.utils.register_keras_serializable()
+class PatternModel(Model):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.pat_layer = self.layers[-1]
+
+    @staticmethod
+    def make(base_model, pattern, pattern_class):
+        patlist = list(pattern)
+        patlist.sort()
+        player = PatternLayer(patlist, pattern_class)
+        player.build_branch(base_model)
+        x = player(base_model.input)
+        pmodel = PatternModel(inputs=base_model.input, outputs=x)
+        return pmodel
+
+    def fit(self, ds, **kwargs):
+        self.pat_layer.fit(ds, **kwargs)
+
+    def evaluate(self, ds, trans=None):
+        bdf = pats.preprocess(self, ds, trans)
+        patds, baseds = pats.match_dataset(ds, bdf, self.pat_layer.pattern, self.pat_layer.pattern_class)
+        p = self.pat_layer.pat_model.evaluate(patds, return_dict=True)
+        b = self.pat_layer.base_model.evaluate(baseds, return_dict=True)
+        return {'base': b, 'pattern': p}
 
 
 def evaluate(model, ds):

@@ -6,6 +6,7 @@ from itertools import compress
 import os
 import spmf
 import const
+import data
 import mlutil
 
 
@@ -180,3 +181,25 @@ def unique_elements(pats):
             else:
                 elems[e] = {'patterns': [index], 'targetmatches': set(p['targetmatches']), 'othermatches': set(p['othermatches'])}
     return elems
+
+
+def preprocess(model, ds, trans_path=None):
+    if trans_path is None or not os.path.exists(trans_path):
+        layermodel = mlutil.make_output_model(model.pat_layer.base_model)
+        trans = model_to_transactions(layermodel, ds, include_meta=True)
+        if trans is not None:
+            trans.to_csv(trans_path)
+    else:
+        trans = pd.read_csv(trans_path, index_col='index')
+    scaled, _ = data.scale(trans, output_range=(0, 1), scaler=model.pat_layer.scaler)
+    bdf = binarize(scaled, 0.5)
+    return bdf
+
+
+def match_dataset(ds, bdf, pattern, pattern_class):
+    classname = ds.class_names[pattern_class]
+    matchidx, nonmatchidx = matches(bdf, set(pattern))
+    matchds = data.load_dataset_selection(ds, bdf.loc[matchidx]['path'].to_list())
+    patds = data.split_dataset_paths(matchds, classname, label_mode='binary')
+    baseds = data.load_dataset_selection(ds, bdf.loc[nonmatchidx]['path'].to_list())
+    return patds, baseds

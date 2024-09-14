@@ -11,7 +11,7 @@ import mlutil
 import data
 import patterns as pats
 import const
-from pattern_model import PatternLayer, evaluate
+from pattern_model import PatternLayer, evaluate, PatternModel
 
 
 
@@ -37,44 +37,46 @@ def build_model():
     return model
 
 
+def build_pat_model(trainds, valds):
+    base_model = models.load_model('largeimage16.keras', compile=True)
+    player = PatternLayer(['activation-1', 'activation-2'], 1)
+    player.build_branch(base_model)
+    x = player(base_model.input)
+    pmodel = Model(inputs=base_model.input, outputs=x)
+    pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+                  metrics=['accuracy'])
+    player.fit(trainds, validation_data=valds, epochs=1)
+    #pmodel.save('session/testpatmodel.keras')
+    return pmodel
+
 def run():
     trainds, valds = data.load_dataset('images_large')
-    #base_model = models.load_model('largeimage16.keras', compile=True)
-    #player = PatternLayer(['activation-1', 'activation-2'], 1)
-    #player.build_branch(base_model)
-    #x = player(base_model.input)
-    #pmodel = Model(inputs=base_model.input, outputs=x)
-    #pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
-    #              metrics=['accuracy'])
-    #player.fit(trainds, validation_data=valds, epochs=1)
-    #pmodel.save('session/testpatmodel.keras')
+    base_model = models.load_model('largeimage16.keras', compile=True)
+
+    pmodel = PatternModel.make(base_model, ['activation-1', 'activation-2'], 1)
+
+    pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+                  metrics=['accuracy'])
+    #pmodel.fit(trainds, validation_data=valds, epochs=1)
+    #pmodel.save('session/testpatmodel_class.keras')
+
+    pmodel2 = models.load_model('session/testpatmodel_class.keras', compile=True)
+
+    pmodel2.evaluate(trainds, 'session/trans_feat_full.csv')
+    print(1)
+
+
+def run2():
+    trainds, valds = data.load_dataset('images_large')
+
+
+    #podel = build_pat_model(trainds, valds)
     pmodel = models.load_model('session/testpatmodel.keras', compile=True)
     #tf.config.run_functions_eagerly(True)
-    #results = base_model.evaluate(valds)
-    #presults = pmodel.evaluate(valds)
+
     evaluate(pmodel, trainds)
     pmodel.save('session/testpatmodel.keras')
     pmodel2 = models.load_model('session/testpatmodel.keras')
-
-    fit_pattern(player, trainds, validation_data=valds, epochs=3)
-    pmodel.save('session/testpatmodel.keras')
-    #save_model(pmodel, 'session/testpatmodel.keras')
-    #pmodel.save('session/testpatmodel.keras')
-    #pmodel.layers[-1].base_model.save('session/base.keras')
-    #pmodel.layers[-1].pat_model.save('session/pat.keras')
-    #m = models.load_model('session/testpatmodel.keras', compile=False)
-    #b = models.load_model('session/base.keras', compile=False)
-    #p = models.load_model('session/pat.keras')
-    #load_model('session/testpatmodel.keras')
-    pmodel2 = models.load_model('session/testpatmodel.keras', compile=False)
-
-    #test_loss, test_acc = model.evaluate(test_images, test_labels, verbose=2)
-    results = model.evaluate(valds)
-    presults = pmodel.evaluate(valds)
-    #pmodel = build_model()
-    #pmodel.set_weights(model.get_weights())
-    # pmodel.save('session/patmodel.keras')
-    # loaded = models.load_model('session/patmodel.keras')
 
     trans = pd.read_csv('session/trans_feat16.csv', index_col='index')
     # franges = get_ranges(trans, zeromin=True)
