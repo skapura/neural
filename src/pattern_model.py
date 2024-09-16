@@ -108,7 +108,9 @@ class PatternLayer(layers.Layer):
 
         # Filter training data
         transpath = kwargs['trans_path'] if 'trans_path' in kwargs else None
-        bdf = pats.preprocess(self, ds, transpath)
+        bdf, s = pats.preprocess(self.base_model, ds, transpath, self.scaler)
+        if self.scaler is None:
+            self.scaler = s
         matches, nonmatches = pats.matches(bdf, pattern)
         matchds = data.load_dataset_selection(ds, bdf.loc[matches]['path'].to_list())
         binds = data.split_dataset_paths(matchds, classname, label_mode='binary')
@@ -118,7 +120,7 @@ class PatternLayer(layers.Layer):
         if 'validation_data' in kwargs:
             valds = kwargs['validation_data']
             valpath = kwargs['val_path'] if 'val_path' in kwargs else None
-            bdf = pats.preprocess(self, valds, valpath)
+            bdf, _ = pats.preprocess(self.base_model, valds, valpath, self.scaler)
             matches, nonmatches = pats.matches(bdf, pattern)
             matchds = data.load_dataset_selection(valds, bdf.loc[matches]['path'].to_list())
             valbinds = data.split_dataset_paths(matchds, classname, label_mode='binary')
@@ -175,10 +177,11 @@ class PatternModel(Model):
         self.pat_layer = self.layers[-1]
 
     @staticmethod
-    def make(base_model, pattern, pattern_class):
+    def make(base_model, pattern, pattern_class, scaler=None):
         patlist = list(pattern)
         patlist.sort()
         player = PatternLayer(patlist, pattern_class)
+        player.scaler = scaler
         player.build_branch(base_model)
         x = player(base_model.input)
         pmodel = PatternModel(inputs=base_model.input, outputs=x)
@@ -187,8 +190,8 @@ class PatternModel(Model):
     def fit(self, ds, **kwargs):
         self.pat_layer.fit(ds, **kwargs)
 
-    def evaluate(self, ds, trans=None):
-        bdf = pats.preprocess(self.pat_layer, ds, trans)
+    def evaluate(self, ds, trans_path=None):
+        bdf, _ = pats.preprocess(self.pat_layer.base_model, ds, trans_path, self.pat_layer.scaler)
         patds, baseds = pats.match_dataset(ds, bdf, self.pat_layer.pattern, self.pat_layer.pattern_class)
         p = self.pat_layer.pat_model.evaluate(patds, return_dict=True)
         b = self.pat_layer.base_model.evaluate(baseds, return_dict=True)

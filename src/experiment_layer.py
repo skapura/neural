@@ -11,7 +11,7 @@ import mlutil
 import data
 import patterns as pats
 import const
-from pattern_model import PatternLayer, evaluate, PatternModel
+from pattern_model import PatternLayer, PatternModel
 
 
 
@@ -20,7 +20,6 @@ def build_model():
     x = layers.Rescaling(1.0 / 255)(inputs)
     x = layers.Conv2D(128, (3, 3))(x)
     x = layers.Activation("relu")(x)
-    #x = PatternBranch()(x)
     x = layers.MaxPooling2D((2, 2))(x)
     x = layers.Conv2D(64, (3, 3))(x)
     x = layers.Activation('relu')(x)
@@ -37,67 +36,54 @@ def build_model():
     return model
 
 
-def build_pat_model(trainds, valds):
+def pats_by_layer(bdf, columns, label, minsup, minsupratio):
+    col = [c for c in bdf.columns if columns in c]
+    sel = bdf.loc[bdf['label'] == label].drop(const.META, axis=1)[col]
+    notsel = bdf.loc[bdf['label'] != label].drop(const.META, axis=1)[col]
+
+    #minsup = 0.7
+    #minsupratio = 1.1
+    imatch, nonmatch = pats.matches(sel, set(['activation_1-8']))
+    isup = len(imatch) / len(sel)
+    nonsup = len(nonmatch) / len(sel)
+    cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
+    #elems = pats.unique_elements(cpats)
+    return cpats
+
+
+def build_pat_model(trainds, transpath, valds, valpath):
     base_model = models.load_model('largeimage16.keras', compile=True)
-    player = PatternLayer(['activation-1', 'activation-2'], 1)
-    player.build_branch(base_model)
-    x = player(base_model.input)
-    pmodel = Model(inputs=base_model.input, outputs=x)
+    bdf, scaler = pats.preprocess(base_model, trainds, transpath)
+
+    #col = [c for c in bdf.columns if 'activation-' in c]
+    #sel = bdf.loc[bdf['label'] == 0.0].drop(const.META, axis=1)[col]
+    #notsel = bdf.loc[bdf['label'] != 0.0].drop(const.META, axis=1)[col]
+
+    minsup = 0.5
+    minsupratio = 1.1
+    #cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
+    cpats = pats_by_layer(bdf, 'activation_1-', 0.0, minsup, minsupratio)
+    elems = pats.unique_elements(cpats)
+    v = list(elems.keys())
+
+    base_model = models.load_model('largeimage16.keras', compile=True)
+    pmodel = PatternModel.make(base_model, v, 0)
     pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
                   metrics=['accuracy'])
-    player.fit(trainds, validation_data=valds, epochs=1)
-    #pmodel.save('session/testpatmodel.keras')
-    return pmodel
+    pmodel.fit(trainds, trans_path=transpath, validation_data=valds, val_path=valpath, epochs=1)
+    pmodel.save('session/testpatmodel_class.keras')
+
+
 
 def run():
     trainds, valds = data.load_dataset('images_large')
-    #base_model = models.load_model('largeimage16.keras', compile=True)
+    transpath = 'session/trans_feat_full.csv'
+    valpath = 'session/vtrans_feat_full.csv'
 
-    #pmodel = PatternModel.make(base_model, ['activation-1', 'activation-2'], 1)
-
-    #pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
-    #              metrics=['accuracy'])
-    #pmodel.fit(trainds, trans_path='session/trans_feat_full.csv', validation_data=valds, val_path='session/vtrans_feat_full.csv', epochs=1)
-    #pmodel.save('session/testpatmodel_class.keras')
+    build_pat_model(trainds, transpath, valds, valpath)
 
     pmodel = models.load_model('session/testpatmodel_class.keras', compile=True)
 
-    pmodel.evaluate(trainds, 'session/trans_feat_full.csv')
+    results = pmodel.evaluate(trainds, transpath)
     print(1)
 
-
-def run2():
-    trainds, valds = data.load_dataset('images_large')
-
-
-    #podel = build_pat_model(trainds, valds)
-    pmodel = models.load_model('session/testpatmodel.keras', compile=True)
-    #tf.config.run_functions_eagerly(True)
-
-    evaluate(pmodel, trainds)
-    pmodel.save('session/testpatmodel.keras')
-    pmodel2 = models.load_model('session/testpatmodel.keras')
-
-    trans = pd.read_csv('session/trans_feat16.csv', index_col='index')
-    # franges = get_ranges(trans, zeromin=True)
-    scaled = data.scale(trans, output_range=(0, 1))
-    bdf = pats.binarize(scaled, 0.5)
-
-    # col = bdf.columns.difference(const.META, sort=False)
-    col = [c for c in bdf.columns if 'activation-' in c]
-    sel = bdf.loc[bdf['label'] == 0.0].drop(const.META, axis=1)[col]
-    notsel = bdf.loc[bdf['label'] != 0.0].drop(const.META, axis=1)[col]
-
-    minsup = 0.7
-    minsupratio = 1.1
-    cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
-    elems = pats.unique_elements(cpats)
-
-    v = list(elems.keys())
-    build_branch_model(model, 'activation', [{'filters': v, 'class': 0}])
-    #pmodel = models.load_model('session/patmodel.keras')
-    #player = pmodel.get_layer('pattern_branch')
-    #player.build_branch([{'filters': v, 'class': 0}])
-    #pmodel.save('session/patmodel.keras')
-    # loaded = models.load_model('session/patmodel.keras')
-    print(1)
