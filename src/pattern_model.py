@@ -186,7 +186,7 @@ class PatternModel(Model):
         x = player(base_model.input)
         pmodel = PatternModel(inputs=base_model.input, outputs=x)
         return pmodel
-
+        
     def fit(self, ds, **kwargs):
         self.pat_layer.fit(ds, **kwargs)
 
