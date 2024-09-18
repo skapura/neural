@@ -17,6 +17,18 @@ def feature_activation_max(feature_map):
         return feature_map.max()
 
 
+def features_match(features, pattern, feature_activation=feature_activation_max):
+    matches = list()
+    for f in features:
+        m = True
+        for p in pattern:
+            if feature_activation(f[:, :, p]) < 0.5:
+                m = False
+                break
+        matches.append(m)
+    return matches
+
+
 def features_to_transactions(features, layer_name, feature_activation=feature_activation_max):
     transactions = []
     for finput in features:

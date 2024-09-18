@@ -56,33 +56,33 @@ class PatternLayer(layers.Layer):
     def build_branch(self, base_model):
         self.base_model = base_model
         self.base_model.trainable = False
+        basecopy = models.clone_model(self.base_model)
+        #basecopy = self.base_model
 
-        pidx = self.base_model.layers.index(self.base_model.get_layer(self.layer_name))
-        beforepat = self.base_model.layers[pidx - 2]
+        pidx = basecopy.layers.index(basecopy.get_layer(self.layer_name))
+        beforepat = basecopy.layers[pidx - 2]
 
         # Pattern-filter conv2d
-        cfg = base_model.layers[pidx - 1].get_config()
+        cfg = basecopy.layers[pidx - 1].get_config()
         cfg['filters'] = len(self.pattern)
-        cfg.pop('name', None)
         patlayer = layers.Conv2D(**cfg)
         x = patlayer(beforepat.output)
 
         # Pattern-filter activation
         filteridx = [int(e.split('-')[1]) for e in self.pattern]
-        w = mlutil.slice_weights(base_model, self.layer_name, filteridx)
+        w = mlutil.slice_weights(basecopy, self.layer_name, filteridx)
         patlayer.set_weights(w)
-        cfg = base_model.layers[pidx].get_config()
-        cfg.pop('name', None)
+        cfg = basecopy.layers[pidx].get_config()
         x = layers.Activation(**cfg)(x)
 
         # Pattern branch after pattern filter
         x = layers.Conv2D(16, (3, 3), name='pat_hook')(x)
-        x = layers.Activation('relu')(x)
+        x = layers.Activation('relu', name='pat_activation')(x)
         x = layers.GlobalAveragePooling2D()(x)
         x = layers.Dense(1, name='prediction', activation='sigmoid')(x)
 
         # Build pattern model
-        self.pat_model = Model(inputs=self.base_model.inputs, outputs=x)
+        self.pat_model = Model(inputs=basecopy.inputs, outputs=x)
         self.pat_model.compile(optimizer='adam', loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
                                metrics=[tf.keras.metrics.BinaryAccuracy()])
 
@@ -131,9 +131,26 @@ class PatternLayer(layers.Layer):
 
     def call(self, inputs):
         feats = self.pat_feat_extract(inputs)
-        predictions = self.base_model_prediction(feats)
+        matches = pats.features_match(feats, self.pattern_feats)
+        plist = list()
+        for i, m in enumerate(matches):
+            pv = 0.0
+            if m:
+                selfeats = feats[i, ...].numpy()[..., self.pattern_feats]
+                p = self.pat_model_prediction(np.asarray([selfeats]))
+                pv = p.numpy()[0][0]
+                if pv >= 0.5:
+                    pl = [(1.0 - pv) / 2.0, (1.0 - pv) / 2.0, (1.0 - pv) / 2.0]
+                    pl[self.pattern_class] = pv
+                    plist.append(tf.constant([pl]))
+            if not m or pv < 0.5:
+                p = self.base_model_prediction(np.asarray([feats[i, ...]]))
+                plist.append(p)
+        predictions = tf.concat(plist, 0)
         return predictions
 
+    def call2(self, inputs):
+        feats = self.pat_feat_extract(inputs)
         trans = pats.features_to_transactions(feats, self.layer_name)
 
         firstindex = list(self.scaler.feature_names_in_).index(self.layer_name + '-0')
@@ -186,11 +203,14 @@ class PatternModel(Model):
         x = player(base_model.input)
         pmodel = PatternModel(inputs=base_model.input, outputs=x)
         return pmodel
-        
+
     def fit(self, ds, **kwargs):
         self.pat_layer.fit(ds, **kwargs)
 
-    def evaluate(self, ds, trans_path=None):
+    #def call(self, inputs):
+    #    print(1)
+
+    def evaluate2(self, ds, trans_path=None):
         bdf, _ = pats.preprocess(self.pat_layer.base_model, ds, trans_path, self.pat_layer.scaler)
         patds, baseds = pats.match_dataset(ds, bdf, self.pat_layer.pattern, self.pat_layer.pattern_class)
         p = self.pat_layer.pat_model.evaluate(patds, return_dict=True)

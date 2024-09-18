@@ -11,7 +11,7 @@ import mlutil
 import data
 import patterns as pats
 import const
-from pattern_model import PatternLayer, PatternModel
+from pattern_model import PatternModel
 
 
 
@@ -69,21 +69,36 @@ def build_pat_model(trainds, transpath, valds, valpath):
     base_model = models.load_model('largeimage16.keras', compile=True)
     pmodel = PatternModel.make(base_model, v, 0)
     pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
-                  metrics=['accuracy'])
+                  metrics=['accuracy'], run_eagerly=True)
     pmodel.fit(trainds, trans_path=transpath, validation_data=valds, val_path=valpath, epochs=1)
     pmodel.save('session/testpatmodel_class.keras')
-
+    return pmodel
 
 
 def run():
+
+    #tf.config.run_functions_eagerly(True)
     trainds, valds = data.load_dataset('images_large')
     transpath = 'session/trans_feat_full.csv'
     valpath = 'session/vtrans_feat_full.csv'
 
-    build_pat_model(trainds, transpath, valds, valpath)
+    #pmodel = build_pat_model(trainds, transpath, valds, valpath)
 
     pmodel = models.load_model('session/testpatmodel_class.keras', compile=True)
 
-    results = pmodel.evaluate(trainds, transpath)
+    #bm = pmodel.pat_layer.base_model
+    #pm = pmodel.pat_layer.pat_model
+    #testmodel = Model(inputs=[bm.inputs[0], pm.inputs[0]], outputs=[bm.output[0], pm.output[0]])
+    #pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+    #              metrics=['accuracy'], run_eagerly=True)
+
+    #results = pmodel.evaluate(trainds, transpath)
+    #r = pmodel(trainds)
+    #for step, (x, y) in enumerate(trainds):
+    #    r = pmodel(x)
+    #    print(1)
+    bresults = pmodel.pat_layer.base_model.evaluate(trainds)
+    presults = pmodel.evaluate(trainds)
+
     print(1)
 
