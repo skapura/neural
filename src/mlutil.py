@@ -6,7 +6,7 @@ import numpy as np
 
 
 
-class PatternModel(models.Model):
+class EvalModel(models.Model):
 
     def __init__(self, layers, **kwargs):
         super().__init__(**kwargs)
@@ -40,7 +40,7 @@ def make_output_model(model, layers=None):
         layers = [l.name for l in model.layers if isinstance(l, keras.layers.Activation)]
         layers.append('prediction')
     outputs = [layer.output for layer in model.layers if layer.name in layers]
-    outputmodel = PatternModel(layers, inputs=model.inputs, outputs=outputs)
+    outputmodel = EvalModel(layers, inputs=model.inputs, outputs=outputs)
     return outputmodel
 
 
