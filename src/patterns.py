@@ -17,15 +17,12 @@ def feature_activation_max(feature_map):
         return feature_map.max()
 
 
-def features_match(features, pattern, feature_activation=feature_activation_max):
+def features_match(features, pattern, scaler, feature_activation=feature_activation_max):
     matches = list()
     for f in features:
-        m = True
-        for p in pattern:
-            if feature_activation(f[:, :, p]) < 0.5:
-                m = False
-                break
-        matches.append(m)
+        pouts = [feature_activation(f[:, :, p]) for p in pattern]
+        sv = data.scale_by_index(pouts, pattern, scaler)
+        matches.append(all(s >= 0.5 for s in sv))
     return matches
 
 
@@ -201,7 +198,7 @@ def preprocess(base_model, ds, trans_path=None, scaler=None):
     if trans_path is None or not os.path.exists(trans_path):
         layermodel = mlutil.make_output_model(base_model)
         trans = model_to_transactions(layermodel, ds, include_meta=True)
-        if trans is not None:
+        if trans is not None and trans_path is not None:
             trans.to_csv(trans_path)
     else:
         trans = pd.read_csv(trans_path, index_col='index')

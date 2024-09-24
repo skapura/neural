@@ -414,6 +414,13 @@ def scale(df, output_range=(0, 1), scaler=None, exclude=const.META):
     return sdf, scaler
 
 
+def scale_by_index(vals, index, scaler):
+    s = [scaler.scale_[i] for i in index]
+    m = [scaler.min_[i] for i in index]
+    scaled = [v * sv + mv for v, sv, mv in zip(vals, s, m)]
+    return scaled
+
+
 def get_ranges(df, zeromin=False, exclude=const.META):
     selected = df.columns.difference(exclude, sort=False)
     sdf = pd.DataFrame(df, columns=selected, index=df.index)
