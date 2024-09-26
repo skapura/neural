@@ -14,3 +14,10 @@ tf 2.17.0
 
 .profile:
 export TF_CPP_MIN_LOG_LEVEL=2
+
+
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/anaconda/envs/py38_default/x86_64-conda-linux-gnu/lib
+strings libstdc++.so | grep GLIBCXX
+conda install -c conda-forge libgcc=5.2.0
+pip install --upgrade pandas
+sudo apt-get install openjdk-21-jre
