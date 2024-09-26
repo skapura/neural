@@ -94,6 +94,7 @@ class PatternLayer(layers.Layer):
         config = super().get_config()
         config.update({
             'pattern': self.pattern,
+            'pattern_set': self.pattern_set,
             'pattern_class': self.pattern_class
         })
         return config
