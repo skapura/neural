@@ -153,8 +153,8 @@ class PatternLayer(layers.Layer):
             self.pat_train.compile(optimizer='adam', loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
                                    metrics=[tf.keras.metrics.BinaryAccuracy()])
 
-    def build(self, input_shape):
-        self.built = True
+    #def build(self, input_shape):
+    #    self.built = True
 
     def compute_output_shape(self, input_shape):
         if self.base_model is None:
