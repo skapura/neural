@@ -68,14 +68,19 @@ class PatternSelect(layers.Layer):
 @tf.keras.utils.register_keras_serializable()
 class PatternLayer(layers.Layer):
 
-    def __init__(self, pattern, pattern_class, base_model=None, scaler=None, **kwargs):
+    def __init__(self, pattern, pattern_set, pattern_class, base_model=None, scaler=None, **kwargs):
         super().__init__(**kwargs)
-        self.pattern = pattern
+        self.pattern = list(pattern)
+        self.pattern.sort()
+        self.pattern_set = pattern_set
         self.pattern_feats = [int(mlutil.parse_feature_ref(e)[1]) for e in self.pattern]
+        self.pattern_set_feats = [int(mlutil.parse_feature_ref(e)[1]) for e in self.pattern_set]
+        self.pattern_layer = mlutil.parse_feature_ref(self.pattern[0])[0]
         self.pattern_class = pattern_class
         self.base_model = base_model
         self.base_pred = None
         self.pat_pred = None
+        self.pat_match = None
         self.pat_branch = None
         self.pat_train = None
         self.feat_extract = None
@@ -106,17 +111,15 @@ class PatternLayer(layers.Layer):
         self.base_model.save(os.path.join(inner_path, 'base_model.keras'))
         self.pat_pred.save(os.path.join(inner_path, 'pat_model.keras'))
         joblib.dump(self.scaler, os.path.join(inner_path, 'scaler.save'))
-        print('save')
 
     def load_assets(self, inner_path):
         self.base_model = models.load_model(os.path.join(inner_path, 'base_model.keras'), compile=True)
         self.pat_pred = models.load_model(os.path.join(inner_path, 'pat_model.keras'), compile=True)
         self.scaler = joblib.load(os.path.join(inner_path, 'scaler.save'))
         self.build_branches()
-        print('load')
 
     def build_branches(self):
-        player = self.base_model.get_layer('activation_1')
+        player = self.base_model.get_layer(self.pattern_layer)
         self.feat_extract = Model(inputs=self.base_model.inputs, outputs=player.output, name='feat_extract')
         self.feat_extract.trainable = False
 
@@ -125,13 +128,18 @@ class PatternLayer(layers.Layer):
 
         if self.pat_pred is None:
             inputs = keras.Input(shape=self.feat_extract.output_shape[1:])
-            x = PatternSelect(self.pattern_feats)(inputs)
+            x = PatternSelect(self.pattern_set_feats)(inputs)
             x = layers.MaxPooling2D((2, 2))(x)
-            x = layers.Conv2D(16, (3, 3))(x)
+            x = layers.Conv2D(64, (3, 3))(x)
+            x = layers.Activation('relu')(x)
+            x = layers.Conv2D(32, (3, 3))(x)
             x = layers.Activation('relu')(x)
             x = layers.GlobalAveragePooling2D()(x)
             x = layers.Dense(1, name='prediction', activation='sigmoid')(x)
             self.pat_pred = Model(inputs=inputs, outputs=x, name='pat_pred')
+
+        if self.pat_match is None:
+            self.pat_match = PatternMatch(self.pattern_feats, self.scaler)
 
         if self.pat_branch is None:
             self.pat_branch = PickBestBranch(self.base_pred, self.pat_pred, self.pattern_class)
@@ -183,7 +191,7 @@ class PatternLayer(layers.Layer):
 
     def call(self, inputs):
         x = self.feat_extract(inputs)
-        matches = PatternMatch(self.pattern_feats, self.scaler)(x)
+        matches = self.pat_match(x)
         tlist = list()
         for i, m in enumerate(matches):
             s = x[i, ...][None, ...]
