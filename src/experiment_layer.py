@@ -77,7 +77,7 @@ def build_pat_model(trainds, transpath, valds, valpath):
 
 
 def run():
-    #tf.config.run_functions_eagerly(True)
+    #tf.config.run_functions_eagerly(True) test
     trainds, valds = data.load_dataset('images_large')
     transpath = 'session/trans_feat_full_new.csv'
     valpath = 'session/vtrans_feat_full_new.csv'
