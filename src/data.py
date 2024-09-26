@@ -1,8 +1,8 @@
+from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from keras.src.utils import dataset_utils
 from keras.src.utils.image_dataset_utils import paths_and_labels_to_dataset
 from keras.src.backend.config import standardize_data_format
-from sklearn.preprocessing import MinMaxScaler
 import pandas as pd
 import numpy as np
 import math
