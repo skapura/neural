@@ -113,7 +113,7 @@ def run():
     #p.trainable = True
     p.save('session/test.keras')
     #p2 = models.load_model('session/test.keras')
-    r = p.evaluate(trainds, return_dict=True)
+    #r = p.evaluate(trainds, return_dict=True)
     rb = base_model.evaluate(trainds, return_dict=True)
 
 
