@@ -107,7 +107,7 @@ def run():
     x = PatternLayer(pattern, patternset, 0, base_model, scaler)(inputs)
     p = PatternModel(inputs=inputs, outputs=x)
     p.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
-                  metrics=['accuracy'], run_eagerly=True)
+                  metrics=[keras.metrics.CategoricalAccuracy()], run_eagerly=True)
 
     p.fit(trainds, trans_path=transpath, epochs=1)
     #p.fit(trainds, epochs=1)
@@ -115,7 +115,7 @@ def run():
     #p.save('session/test.keras')
     #p2 = models.load_model('session/test.keras', compile=True)
     #p2.metrics[-1].built = True
-    p.metrics[1].built = True
+    #p.metrics[1].built = True
     r = p.evaluate(trainds, return_dict=True)
     rb = base_model.evaluate(trainds, return_dict=True)
 

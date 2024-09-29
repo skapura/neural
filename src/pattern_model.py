@@ -214,7 +214,10 @@ class PatternModel(Model):
         self.pat_layer = self.layers[-1]
 
     def build(self, input_shape):
+        super().build(input_shape)
         self.built = True
 
     def fit(self, ds, **kwargs):
+        #super().fit(ds)
+        self.reset_metrics()
         self.pat_layer.fit(ds, **kwargs)

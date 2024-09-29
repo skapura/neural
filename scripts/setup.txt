@@ -21,3 +21,5 @@ strings libstdc++.so | grep GLIBCXX
 conda install -c conda-forge libgcc=5.2.0
 pip install --upgrade pandas
 sudo apt-get install openjdk-21-jre
+
+Settings -> Configuration -> (uncheck) Eenable Secure Boot
