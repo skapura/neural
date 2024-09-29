@@ -118,8 +118,10 @@ class PatternLayer(layers.Layer):
     def load_assets(self, inner_path):
         self.base_model = models.load_model(os.path.join(inner_path, 'base_model.keras'), compile=True)
         self.base_model.trainable = False
+        self.base_model.compile()
         self.pat_pred = models.load_model(os.path.join(inner_path, 'pat_model.keras'), compile=True)
         self.pat_pred.trainable = False
+        self.pat_pred.compile()
         self.scaler = joblib.load(os.path.join(inner_path, 'scaler.save'))
         self.build_branches()
 
