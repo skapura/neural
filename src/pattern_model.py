@@ -2,6 +2,8 @@ import tensorflow as tf
 import keras
 from keras import layers, models
 from keras.src.models import Model
+from keras.src.metrics.accuracy_metrics import accuracy
+import keras.src.trainers.data_adapters.data_adapter_utils as data_adapter_utils
 import numpy as np
 import os
 import joblib
@@ -115,7 +117,9 @@ class PatternLayer(layers.Layer):
 
     def load_assets(self, inner_path):
         self.base_model = models.load_model(os.path.join(inner_path, 'base_model.keras'), compile=True)
+        self.base_model.trainable = False
         self.pat_pred = models.load_model(os.path.join(inner_path, 'pat_model.keras'), compile=True)
+        self.pat_pred.trainable = False
         self.scaler = joblib.load(os.path.join(inner_path, 'scaler.save'))
         self.build_branches()
 
@@ -221,3 +225,33 @@ class PatternModel(Model):
         #super().fit(ds)
         self.reset_metrics()
         self.pat_layer.fit(ds, **kwargs)
+
+    def evaluate2(self, ds, **kwargs):
+        outputs = None
+        for step, (x_batch, y_batch) in enumerate(ds):
+            #print(step)
+            y_pred = self(x_batch)
+            #ll = y_batch.numpy().tolist()
+            #ll = [[0, 1, 0], [1, 0, 0], [0, 0, 1]]
+            #yy = [[0.1, 0.8, 0.1], [0.4, 0.5, 0.1], [0.1, 0.1, 0.8]]
+            #b = keras.metrics.categorical_accuracy(ll, yy)
+            #abc = tf.math.reduce_sum(b)
+            #c = accuracy(ll, yy)
+            #a = keras.metrics.categorical_accuracy(y_batch, y_pred)
+
+            #print('pred')
+        print(1)
+
+    def test_step(self, data):
+        x, y, sample_weight = data_adapter_utils.unpack_x_y_sample_weight(data)
+        if self._call_has_training_arg:
+            y_pred = self(x, training=False)
+        else:
+            y_pred = self(x)
+        loss = self._compute_loss(
+            x=x, y=y, y_pred=y_pred, sample_weight=sample_weight, training=False
+        )
+        #self._loss_tracker.update_state(
+        #    loss, sample_weight=tf.shape(tree.flatten(x)[0])[0]
+        #)
+        return self.compute_metrics(x, y, y_pred, sample_weight=sample_weight)

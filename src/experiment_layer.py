@@ -110,13 +110,13 @@ def run():
                   metrics=[keras.metrics.CategoricalAccuracy()], run_eagerly=True)
 
     #p.fit(trainds, trans_path=transpath, epochs=1)
-    p.fit(trainds, epochs=1)
+    #p.fit(trainds, epochs=1)
     #p.trainable = True
     #p.save('session/test.keras')
-    #p2 = models.load_model('session/test.keras', compile=True)
+    p2 = models.load_model('session/test.keras', compile=True)
     #p2.metrics[-1].built = True
     #p.metrics[1].built = True
-    r = p.evaluate(trainds, return_dict=True)
+    r = p2.evaluate(trainds, return_dict=True)
     rb = base_model.evaluate(trainds, return_dict=True)
 
     print('eval')
