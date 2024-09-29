@@ -109,8 +109,8 @@ def run():
     p.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
                   metrics=[keras.metrics.CategoricalAccuracy()], run_eagerly=True)
 
-    p.fit(trainds, trans_path=transpath, epochs=1)
-    #p.fit(trainds, epochs=1)
+    #p.fit(trainds, trans_path=transpath, epochs=1)
+    p.fit(trainds, epochs=1)
     #p.trainable = True
     #p.save('session/test.keras')
     #p2 = models.load_model('session/test.keras', compile=True)
