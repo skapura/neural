@@ -2,11 +2,13 @@ import tensorflow as tf
 import keras
 from keras import layers, models
 from keras.src.models import Functional, Model
+from keras.src.utils import Progbar
 import pandas as pd
 import os
 import numpy as np
 import joblib
 import shutil
+import time
 import mlutil
 import data
 import patterns as pats
@@ -77,9 +79,17 @@ def build_pat_model(trainds, transpath, valds, valpath):
 
 
 def run():
+
+    #p = Progbar(10)
+    #for i in range(10):
+    #    time.sleep(2)
+    #    p.update(i)
+
+
+
     #tf.config.run_functions_eagerly(True) test test2
     trainds, valds = data.load_dataset('images_large')
-    transpath = 'session/trans_feat_full_new.csv'
+    transpath = 'session/trans_feat_full_new2.csv'
     valpath = 'session/vtrans_feat_full_new.csv'
 
     #model = models.load_model('session/test.keras', compile=True)
@@ -87,6 +97,9 @@ def run():
 
     # Feature extract
     base_model = models.load_model('largeimage16.keras', compile=True)
+
+    layermodel = mlutil.make_output_model(base_model)
+    r = layermodel.predict(valds)
 
     bdf, scaler = pats.preprocess(base_model, trainds, transpath)
 
@@ -109,16 +122,21 @@ def run():
     p.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
                   metrics=[keras.metrics.CategoricalAccuracy()], run_eagerly=True)
 
-    p.fit(trainds, trans_path=transpath, epochs=1)
+    #p.fit(trainds, trans_path=transpath, epochs=1)
     #p.fit(trainds, epochs=1)
     #p.trainable = True
     #p.save('session/test.keras')
-    #p2 = models.load_model('session/test.keras', compile=True)
+    p = models.load_model('session/test.keras', compile=True)
+    p.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+                  metrics=[keras.metrics.CategoricalAccuracy()], run_eagerly=True)
+
     #p2.metrics[-1].built = True
     #p.metrics[1].built = True
+    print('eval:')
     r = p.evaluate(trainds, return_dict=True)
+    print(r)
     rb = base_model.evaluate(trainds, return_dict=True)
-
+    print(rb)
     print('eval')
     return
 

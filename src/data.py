@@ -29,6 +29,7 @@ def load_from_directory(
     follow_links=False,
     crop_to_aspect_ratio=False,
     data_format=None,
+    sample_size=None,
     selection=None
 ):
     """Generates a `tf.data.Dataset` from image files in a directory.
@@ -218,6 +219,12 @@ def load_from_directory(
         follow_links=follow_links,
     )
 
+    # Subsampling
+    if sample_size is not None:
+        samples = np.random.default_rng().choice(len(image_paths), sample_size, replace=False)
+        image_paths = [image_paths[s] for s in samples]
+        labels = [labels[s] for s in samples]
+
     # Added: subset selection and binary translation
     if selection is not None:
         sel_image_paths = []
@@ -369,9 +376,9 @@ def load_from_directory(
     return dataset
 
 
-def load_dataset(dsname, size=(256, 256), shuffle=True):
-    trainds = load_from_directory('datasets/' + dsname + '/train', labels='inferred', label_mode='categorical', image_size=size, shuffle=shuffle)
-    valds = load_from_directory('datasets/' + dsname + '/val', labels='inferred', label_mode='categorical', image_size=size, shuffle=shuffle)
+def load_dataset(dsname, size=(256, 256), shuffle=True, sample_size=None):
+    trainds = load_from_directory('datasets/' + dsname + '/train', labels='inferred', label_mode='categorical', image_size=size, shuffle=shuffle, sample_size=sample_size)
+    valds = load_from_directory('datasets/' + dsname + '/val', labels='inferred', label_mode='categorical', image_size=size, shuffle=shuffle, sample_size=sample_size)
     return trainds, valds
 
 

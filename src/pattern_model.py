@@ -120,8 +120,8 @@ class PatternLayer(layers.Layer):
         self.base_model.trainable = False
         self.base_model.compile()
         self.pat_pred = models.load_model(os.path.join(inner_path, 'pat_model.keras'), compile=True)
-        self.pat_pred.trainable = False
-        self.pat_pred.compile()
+        #self.pat_pred.trainable = False
+        #self.pat_pred.compile()
         self.scaler = joblib.load(os.path.join(inner_path, 'scaler.save'))
         self.build_branches()
 
@@ -225,8 +225,18 @@ class PatternModel(Model):
 
     def fit(self, ds, **kwargs):
         #super().fit(ds)
-        self.reset_metrics()
+        #self.reset_metrics()
         self.pat_layer.fit(ds, **kwargs)
+
+    @property
+    def metrics(self):
+        return []
+
+    def test_step(self, inputs):
+        print(1)
+
+    def evaluate(self, ds, **kwargs):
+        super().evaluate(ds, **kwargs)
 
     def evaluate2(self, ds, **kwargs):
         outputs = None
@@ -244,7 +254,7 @@ class PatternModel(Model):
             #print('pred')
         print(1)
 
-    def test_step(self, data):
+    def test_step2(self, data):
         x, y, sample_weight = data_adapter_utils.unpack_x_y_sample_weight(data)
         if self._call_has_training_arg:
             y_pred = self(x, training=False)
