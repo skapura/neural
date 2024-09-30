@@ -1,7 +1,9 @@
 from keras import layers, models
 import tensorflow as tf
 import keras
-from keras.src.models import Model
+from keras.src.models import Model, Functional
+from keras.src import ops
+from keras.src.utils import Progbar
 from patterns import feature_activation_max
 import mlutil
 import numpy as np
@@ -11,15 +13,22 @@ class TransactionLayer(layers.Layer):
     def __init__(self, feature_activation=feature_activation_max, **kwargs):
         super().__init__(**kwargs)
         self.feature_activation = feature_activation
-        self.max_vals = np.empty(0)
+        self.max_vals = None
 
     def transform_instance(self, x):
         x = tf.transpose(x, perm=[2, 0, 1])
         x = tf.map_fn(tf.reduce_max, x)
         return x
 
-    def call(self, inputs):
+    def call(self, inputs, training=None):
         outputs = tf.map_fn(self.transform_instance, inputs)
+        bmax = ops.max(outputs, axis=0)     # get max from batch
+        if training:
+            if self.max_vals is None:
+                self.max_vals = bmax
+            else:
+                cmax = tf.stack([self.max_vals, bmax], axis=1)
+                self.max_vals = tf.map_fn(tf.reduce_max, cmax)
         return outputs
 
     @staticmethod
@@ -30,18 +39,55 @@ class TransactionLayer(layers.Layer):
         x = layermodel(inputs)
         x = [TransactionLayer(feature_activation)(xo) for xo in x[:-1]]
         x = layers.Concatenate()(x)
-        x = layers.BatchNormalization()(x)
-        x = MaxLayer()(x)
-        tmodel = Model(inputs=inputs, outputs=x)
+        x = TransformLayer(binary_transform=True)(x)
+        tmodel = Functional(inputs=inputs, outputs=x)
         return tmodel
 
+    @staticmethod
+    def train(model, ds):
+        bds = ds.repeat(1)
+        numbatches = tf.data.experimental.cardinality(ds).numpy()
+        p = Progbar(numbatches)
+        for i, batch in enumerate(bds):
+            p.update(i + 1)
+            model(batch[0], training=True)
 
-class MaxLayer(layers.Layer):
-    def __init__(self, **kwargs):
+
+class TransformLayer(layers.Layer):
+    def __init__(self, binary_transform=True, threshold=0.5, **kwargs):
         super().__init__(**kwargs)
-        self.max_vals = np.empty(0)
+        self.binary_transform = binary_transform
+        self.threshold = threshold
+        self.max_vals = None
 
-    def call(self, inputs):
-        if len(self.max_vals == 0):
-            self.max_vals = np.zeros(inputs.shape[-1])
+    def scale(self, x):
+        if x[1] == 0.0:
+            return 0.0
+        else:
+            s = x[0] / x[1]
+            return s
+
+    def binarize(self, x):
+        s = self.scale(x)
+        return 1.0 if s >= self.threshold else 0.0
+
+    def transformer(self, x):
+        c = tf.stack([x, self.max_vals], axis=1)
+        if self.binary_transform:
+            r = tf.map_fn(self.binarize, c)
+        else:
+            r = tf.map_fn(self.scale, c)
+        return r
+
+    def call(self, inputs, training=None):
+        bmax = ops.max(inputs, axis=0)     # get max from batch
+        if training:
+            if self.max_vals is None:
+                self.max_vals = bmax
+            else:
+                cmax = tf.stack([self.max_vals, bmax], axis=1)
+                self.max_vals = tf.map_fn(tf.reduce_max, cmax)
+        elif self.max_vals is not None:
+            scaled = tf.map_fn(self.transformer, inputs)
+            return scaled
         return inputs

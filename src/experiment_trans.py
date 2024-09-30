@@ -25,8 +25,8 @@ def run():
 
     #a = np.zeros((5, 256, 256, 64), dtype=int)
     #abc = tf.map_fn(test, a)
-    my_tensor = tf.constant([[1.0, 2.0], [3.0, 4.0]])
-    max_vals = tf.Variable(my_tensor)
+    #my_tensor = tf.constant([[1.0, 2.0], [3.0, 4.0]])
+    #max_vals = tf.Variable(my_tensor)
 
 
     trainds, valds = data.load_dataset('images_large', sample_size=64)
@@ -35,7 +35,11 @@ def run():
 
     base_model = models.load_model('largeimage16.keras', compile=True)
 
+
     tmodel = TransactionLayer.make_model(base_model)
+    TransactionLayer.train(tmodel, trainds)
+
+
     #preds = base_model.predict(tst)
     trans = tmodel.predict(trainds)
 
