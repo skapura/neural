@@ -6,6 +6,7 @@ from keras.src import ops
 from keras.src.utils import Progbar
 from patterns import feature_activation_max
 import mlutil
+import pandas as pd
 import numpy as np
 
 
@@ -44,11 +45,12 @@ class TransactionLayer(layers.Layer):
         layermodel = mlutil.make_output_nodes(base_model)
 
         inputs = keras.Input(base_model.input_shape[1:])
-        x = layermodel(inputs)
-        x = [TransactionLayer(feature_activation)(xo) for xo in x[:-1]]
+        xb = layermodel(inputs)
+        x = [TransactionLayer(feature_activation)(xo) for xo in xb[:-1]]
         x = layers.Concatenate()(x)
-        x = TransformLayer(binary_transform=True)(x)
-        tmodel = Model(inputs=inputs, outputs=x)
+        x = TransformLayer(layer_names=layermodel.output_names, binary_transform=True, name='pat_transform')(x)
+        xd = layers.Identity()(xb[-1])  # will not deserialize without this
+        tmodel = Model(inputs=inputs, outputs=[x, xd])
         return tmodel
 
     @staticmethod
@@ -63,8 +65,9 @@ class TransactionLayer(layers.Layer):
 
 @tf.keras.utils.register_keras_serializable()
 class TransformLayer(layers.Layer):
-    def __init__(self, binary_transform=True, threshold=0.5, **kwargs):
+    def __init__(self, layer_names=None, binary_transform=True, threshold=0.5, **kwargs):
         super().__init__(**kwargs)
+        self.layer_names = layer_names
         self.binary_transform = binary_transform
         self.threshold = threshold
         self.max_vals = None
@@ -72,6 +75,7 @@ class TransformLayer(layers.Layer):
     def get_config(self):
         config = super().get_config()
         config.update({
+            'layer_names': self.layer_names,
             'binary_transform': self.binary_transform,
             'threshold': self.threshold
         })
@@ -110,3 +114,27 @@ class TransformLayer(layers.Layer):
             scaled = tf.map_fn(self.transformer, inputs)
             return scaled
         return inputs
+
+
+def transactions_to_dataframe(model, trans, ds=None):
+    layers = model.get_layer('pat_transform').layer_names
+    header = []
+    for i in range(len(layers) - 1):
+        layername = layers[i]
+        nodecount = model.layers[2 + i].input.shape[-1]
+        for n in range(nodecount):
+            header.append(layername + '-' + str(n))
+
+    df = pd.DataFrame(trans[0], columns=header)
+    df.index.name = 'index'
+
+    if ds is not None:
+        bds = ds.repeat(1)
+        labels = []
+        for i, batch in enumerate(bds):
+            labels += [np.argmax(x) for x in batch[1]]
+        df['predicted'] = [np.argmax(x) for x in trans[1]]
+        df['label'] = labels
+        df['path'] = ds.file_paths
+
+    return df
