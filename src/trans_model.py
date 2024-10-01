@@ -9,11 +9,19 @@ import mlutil
 import numpy as np
 
 
+@tf.keras.utils.register_keras_serializable()
 class TransactionLayer(layers.Layer):
     def __init__(self, feature_activation=feature_activation_max, **kwargs):
         super().__init__(**kwargs)
         self.feature_activation = feature_activation
         self.max_vals = None
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'feature_activation': self.feature_activation
+        })
+        return config
 
     def transform_instance(self, x):
         x = tf.transpose(x, perm=[2, 0, 1])
@@ -33,14 +41,14 @@ class TransactionLayer(layers.Layer):
 
     @staticmethod
     def make_model(base_model, feature_activation=feature_activation_max):
-        layermodel = mlutil.make_output_model(base_model)
+        layermodel = mlutil.make_output_nodes(base_model)
 
         inputs = keras.Input(base_model.input_shape[1:])
         x = layermodel(inputs)
         x = [TransactionLayer(feature_activation)(xo) for xo in x[:-1]]
         x = layers.Concatenate()(x)
         x = TransformLayer(binary_transform=True)(x)
-        tmodel = Functional(inputs=inputs, outputs=x)
+        tmodel = Model(inputs=inputs, outputs=x)
         return tmodel
 
     @staticmethod
@@ -53,12 +61,25 @@ class TransactionLayer(layers.Layer):
             model(batch[0], training=True)
 
 
+@tf.keras.utils.register_keras_serializable()
 class TransformLayer(layers.Layer):
     def __init__(self, binary_transform=True, threshold=0.5, **kwargs):
         super().__init__(**kwargs)
         self.binary_transform = binary_transform
         self.threshold = threshold
         self.max_vals = None
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'binary_transform': self.binary_transform,
+            'threshold': self.threshold
+        })
+        return config
+
+    def build(self, input_shape):
+        super().build(input_shape)
+        self.max_vals = self.add_weight(shape=(input_shape[-1],), initializer='zeros', trainable=True, name='max_vals')
 
     def scale(self, x):
         if x[1] == 0.0:
@@ -82,12 +103,10 @@ class TransformLayer(layers.Layer):
     def call(self, inputs, training=None):
         bmax = ops.max(inputs, axis=0)     # get max from batch
         if training:
-            if self.max_vals is None:
-                self.max_vals = bmax
-            else:
+            if self.trainable:
                 cmax = tf.stack([self.max_vals, bmax], axis=1)
-                self.max_vals = tf.map_fn(tf.reduce_max, cmax)
-        elif self.max_vals is not None:
+                self.max_vals.assign(tf.map_fn(tf.reduce_max, cmax))
+        else:
             scaled = tf.map_fn(self.transformer, inputs)
             return scaled
         return inputs

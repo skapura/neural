@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 
 
-
+@tf.keras.utils.register_keras_serializable()
 class EvalModel(models.Model):
 
     def __init__(self, layers, **kwargs):
@@ -14,6 +14,13 @@ class EvalModel(models.Model):
         self.output_names = layers
         for i in range(len(layers)):
             self.output[i].name = layers[i]
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'layers': self.output_names
+        })
+        return config
 
     def receptive_subset(self, layer):
         idx = self.layers.index(self.get_layer(layer)) - 1
@@ -41,6 +48,14 @@ def make_output_model(model, layers=None):
         layers.append('prediction')
     outputs = [layer.output for layer in model.layers if layer.name in layers]
     outputmodel = EvalModel(layers, inputs=model.inputs, outputs=outputs)
+    return outputmodel
+
+def make_output_nodes(model, layers=None):
+    if layers is None:
+        layers = [l.name for l in model.layers if isinstance(l, keras.layers.Activation)]
+        layers.append('prediction')
+    outputs = [layer.output for layer in model.layers if layer.name in layers]
+    outputmodel = keras.src.Model(inputs=model.inputs, outputs=outputs)
     return outputmodel
 
 

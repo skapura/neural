@@ -34,14 +34,21 @@ def run():
     valpath = 'session/vtrans_feat_full_new.csv'
 
     base_model = models.load_model('largeimage16.keras', compile=True)
-
+    #layermodel = mlutil.make_output_model2(base_model)
+    #layermodel.save('session/layer.keras')
+    #layermodel2 = models.load_model('session/layer.keras')
 
     tmodel = TransactionLayer.make_model(base_model)
     TransactionLayer.train(tmodel, trainds)
+    #tf.saved_model.save(tmodel, 'session/tmodeltest')
+    tmodel.save('session/tmodel.keras')
+    #tmodel2 = tf.saved_model.load('session/tmodeltest')
+    tmodel2 = models.load_model('session/tmodel.keras')
 
 
     #preds = base_model.predict(tst)
     trans = tmodel.predict(trainds)
+    trans2 = tmodel2.predict(trainds)
 
 
     r = layermodel.predict(valds)
