@@ -5,6 +5,7 @@ import keras
 import mlutil
 import tensorflow as tf
 import numpy as np
+import pandas as pd
 from patterns import feature_activation_max
 import patterns as pats
 import const
@@ -39,17 +40,19 @@ def run():
     #layermodel2 = models.load_model('session/layer.keras')
 
 
-    #tmodel = TransactionLayer.make_model(base_model)
-    #labels = TransactionLayer.train(tmodel, trainds)
+    tmodel = TransactionLayer.make_model(base_model)
+    labels = TransactionLayer.train(tmodel, trainds)
     #tmodel.save('session/tmodel.keras')
-    tmodel2 = models.load_model('session/tmodel.keras')
+    #tmodel2 = models.load_model('session/tmodel.keras')
 
 
     #preds = base_model.predict(tst)
     #trans = tmodel.predict(trainds)
-    trans2 = tmodel2.predict(trainds)
+    trans2 = tmodel.predict(trainds)
     #trans2 = None
-    bdf = transactions_to_dataframe(tmodel2, trans2, trainds)
+    bdf = transactions_to_dataframe(tmodel, trans2, trainds)
+    #bdf.to_csv('session/btrans.csv')
+    bdf = pd.read_csv('session/btrans.csv', index_col='index')
 
     minsup = 0.7
     minsupratio = 1.1
