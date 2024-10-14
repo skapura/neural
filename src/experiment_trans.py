@@ -11,8 +11,8 @@ import pandas as pd
 from patterns import feature_activation_max
 import patterns as pats
 import const
-from trans_model import build_transaction_model, fit_medians #, TransactionLayer, transactions_to_dataframe, BinarizeLayer
-#from pattern_model import PatternLayer, PatternSelect, PatternMatch, PatModel
+from trans_model import transactions_to_dataframe, build_transaction_model, fit_medians #, TransactionLayer, transactions_to_dataframe, BinarizeLayer
+from pattern_model import build_pattern_model#PatternLayer, PatternSelect, PatternMatch, PatModel
 from pattern_model import PatternMatch
 
 
@@ -22,13 +22,7 @@ def pats_by_layer(bdf, columns, label, minsup, minsupratio):
     notsel = bdf.loc[bdf['label'] != label].drop(const.META, axis=1)[col]
     print('target # instances: ' + str(len(sel)))
     print('other # instances: ' + str(len(notsel)))
-    #minsup = 0.7
-    #minsupratio = 1.1
-    #imatch, nonmatch = pats.matches(sel, set(['activation_1-8']))
-    #isup = len(imatch) / len(sel)
-    #nonsup = len(nonmatch) / len(sel)
     cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
-    #elems = pats.unique_elements(cpats)
     return cpats
 
 def build_model():
@@ -64,11 +58,26 @@ def build_pre_model(base_model, trainds):
 
 def test():
     trainds = data.load_from_directory('datasets/' + 'images_large' + '/train')
+
+    patlayers = ['activation']
     base_model = models.load_model('largeimage_small.keras', compile=True)
-    tmodel = build_transaction_model(base_model, trainds, ['activation', 'activation_2'])
-    tmodel.save('session/test.keras')
+    #tmodel = build_transaction_model(base_model, trainds, patlayers)
+    #tmodel.save('session/test.keras')
     tmodel = models.load_model('session/test.keras', compile=True)
-    r = tmodel.predict(trainds)
+
+    #trans = tmodel.predict(trainds)
+    #bdf = transactions_to_dataframe(tmodel, trans, trainds)
+    #bdf.to_csv('session/bdf.csv')
+    bdf = pd.read_csv('session/bdf.csv', index_col='index')
+
+    minsup = 0.5
+    minsupratio = 1.1
+    cpats = pats_by_layer(bdf, 'activation-', 0.0, minsup, minsupratio)
+    pattern = cpats[0]
+
+    pt = build_pattern_model(pattern['pattern'], base_model, tmodel)
+    ptpreds = pt.evaluate(trainds, return_dict=True)
+    basepreds = base_model.evaluate(trainds, return_dict=True)
 
     print(1)
 
