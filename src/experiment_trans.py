@@ -1,6 +1,7 @@
 from keras import layers, models
 from keras.models import Model
 from keras.src.utils import Progbar
+from keras.src.models import Functional
 import data
 import keras
 import mlutil
@@ -10,8 +11,9 @@ import pandas as pd
 from patterns import feature_activation_max
 import patterns as pats
 import const
-from trans_model import TransactionLayer, transactions_to_dataframe, BinarizeLayer
-from pattern_model import PatternLayer, PatternSelect, PatternMatch #, PatternBranch
+from trans_model import build_transaction_model, fit_medians #, TransactionLayer, transactions_to_dataframe, BinarizeLayer
+#from pattern_model import PatternLayer, PatternSelect, PatternMatch, PatModel
+from pattern_model import PatternMatch
 
 
 def pats_by_layer(bdf, columns, label, minsup, minsupratio):
@@ -29,6 +31,27 @@ def pats_by_layer(bdf, columns, label, minsup, minsupratio):
     #elems = pats.unique_elements(cpats)
     return cpats
 
+def build_model():
+    inputs = keras.Input(shape=(256, 256, 3))
+    x = layers.Rescaling(1.0 / 255)(inputs)
+    x = layers.Conv2D(16, (3, 3))(x)
+    x = layers.Activation("relu")(x)
+    x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Conv2D(8, (3, 3))(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2D(32, (3, 3))(x)
+    x = layers.Activation('relu')(x)
+    x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Conv2D(16, (3, 3))(x)
+    x = layers.Activation('relu')(x)
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dense(3, name='prediction', activation='softmax')(x)
+    model = Functional(inputs, x)
+    model.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+                  metrics=['accuracy'])
+    return model
+
+
 def build_pre_model(base_model, trainds):
     tmodel = BinarizeLayer.train(base_model, trainds)
     tmodel.save('session/tmodel.keras')
@@ -39,18 +62,40 @@ def build_pre_model(base_model, trainds):
     return tmodel, bdf
 
 
+def test():
+    trainds = data.load_from_directory('datasets/' + 'images_large' + '/train')
+    base_model = models.load_model('largeimage_small.keras', compile=True)
+    tmodel = build_transaction_model(base_model, trainds, ['activation', 'activation_2'])
+    tmodel.save('session/test.keras')
+    tmodel = models.load_model('session/test.keras', compile=True)
+    r = tmodel.predict(trainds)
+
+    print(1)
+
+
 def run():
-    tf.config.run_functions_eagerly(True)
+    #tf.config.run_functions_eagerly(True)
 
-    #a = tf.TensorArray(tf.float32, size=32, dynamic_size=True)
-    #a.write(0, tf.constant([1.0, 2.0, 3.0]))
-    #a.write(1, tf.constant([4.0, 5.0, 6.0]))
-    #b = a.stack()
+    test()
 
-    base_model = models.load_model('largeimage16.keras', compile=True)
-    trainds, valds = data.load_dataset('images_large')#, sample_size=128)
+    #trainds = data.load_from_directory('datasets/' + 'images_large' + '/train')
+    trainds = data.load_from_directory('datasets/' + 'images_large' + '/train')
+    #img = trainds.file_paths[:32]
+    #lbl = trainds.labels[:32]
+    #trainds2 = data.image_subset(img, lbl, trainds.class_names, binary_target=None)
+
+    #base_model = models.load_model('largeimage16.keras', compile=True)
+    base_model = models.load_model('largeimage_small.keras', compile=True)
+    #base_model = build_model()
+    #base_model.fit(trainds, epochs=2)
+    #base_model.save('largeimage_small.keras')
+    #trainds, valds = data.load_dataset('images_large')#, sample_size=128)
     transpath = 'session/trans_feat_full_new2.csv'
     valpath = 'session/vtrans_feat_full_new.csv'
+
+    #s = [trainds.file_paths[0], trainds.file_paths[2]]
+    #data.load_dataset_selection(trainds, selection=s, label_mode='binary')
+
 
     #build_pre_model(trainds)
     tmodel = models.load_model('session/tmodel.keras', compile=True)
@@ -68,15 +113,50 @@ def run():
 
     pattern = cpats[1]['pattern']
     pattern_feats = [int(mlutil.parse_feature_ref(e)[1]) for e in pattern]
+    medians = tmodel.get_layer('pat_transform').medians
+    pattern_medians = tf.gather(medians, indices=pattern_feats, axis=0)
+
+    inputs = keras.Input(shape=base_model.input_shape[1:])
+    matcher = PatternMatch(tmodel)(inputs)
+    pmodel = Model(inputs=inputs, outputs=matcher)
+
+    pmodel.predict(trainds)
+
+
 
     inputs = keras.Input(shape=base_model.input_shape[1:])
     medians = tmodel.get_layer('pat_transform').medians
     x = PatternLayer(pattern, 0.0, medians, base_model)(inputs)
-    pmodel = Model(inputs=inputs, outputs=x)
+    pmodel = PatModel(inputs=inputs, outputs=x)
+    pmodel.compile(loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+        metrics=['accuracy'])
+    r = pmodel.fit(trainds)
+    #pmodel.save('session/pmodel.keras')
+    #pmodel = models.load_model('session/pmodel.keras', compile=True)
+    #pmodel.compile()
+    #print(pmodel.metrics)
+    #return
+    pres = pmodel.evaluate(trainds, return_dict=True)
+    bres = base_model.evaluate(trainds, return_dict=True)
+    print(pres)
+    print(bres)
+    return
+
+    numbatches = tf.data.experimental.cardinality(trainds).numpy()
+    p = Progbar(numbatches)
+    m = keras.metrics.CategoricalAccuracy()
+    l = keras.losses.CategoricalCrossentropy(from_logits=False)
+    lv = 0.0
     for step, (x_batch, y_batch) in enumerate(trainds):
         a = pmodel(x_batch)
-        print(1)
-
+        m.update_state(y_batch, a)
+        lv += l(y_batch, a)
+        #e = pmodel.evaluate(trainds)
+        #print(step)
+        p.update(step + 1)
+    print(m.result())
+    print(lv/ numbatches)
+    return
     player = base_model.get_layer('activation')
     feat_extract = Model(inputs=base_model.inputs, outputs=player.output, name='feat_extract')
     inputs = keras.Input(shape=feat_extract.output_shape[1:])
@@ -87,6 +167,7 @@ def run():
     x = PatternMatch(medians=selmedians)(xt)
     x = PatternBranch()([xt, x])
     patselect = Model(inputs=inputs, outputs=x)
+
 
     for step, (x_batch, y_batch) in enumerate(trainds):
         outs = feat_extract(x_batch)

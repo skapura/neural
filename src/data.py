@@ -12,8 +12,94 @@ import const
 ALLOWLIST_FORMATS = (".bmp", ".gif", ".jpeg", ".jpg", ".png")
 
 
-# modified keras image_dataset_from_directory
 def load_from_directory(
+    directory,
+    batch_size=32,
+    image_size=(256, 256),
+    shuffle=True,
+    seed=None
+):
+
+    if seed is None:
+        seed = np.random.randint(1e6)
+    image_paths, labels, class_names = dataset_utils.index_directory(
+        directory,
+        'inferred',
+        formats=ALLOWLIST_FORMATS,
+        class_names=None,
+        shuffle=shuffle,
+        seed=seed,
+        follow_links=False
+    )
+
+    if not image_paths:
+        raise ValueError(
+            f"No images found in directory {directory}. "
+            f"Allowed formats: {ALLOWLIST_FORMATS}"
+        )
+
+    dataset = paths_and_labels_to_dataset(
+        image_paths=image_paths,
+        image_size=image_size,
+        num_channels=3,
+        labels=labels,
+        label_mode='categorical',
+        num_classes=len(class_names) if class_names else 0,
+        interpolation='bilinear',
+        crop_to_aspect_ratio=False,
+        data_format='channels_last',
+    )
+
+    if batch_size is not None:
+        dataset = dataset.batch(batch_size)
+    dataset = dataset.prefetch(tf.data.AUTOTUNE)
+    dataset.class_names = class_names
+    dataset.file_paths = image_paths
+    dataset.labels = list(labels)
+
+    return dataset
+
+
+def labels_to_binary(labels, target):
+    return [1 if lbl == target else 0 for lbl in labels]
+
+
+def image_subset(image_paths, labels, class_names, binary_target=None, batch_size=32, image_size=(256, 256)):
+
+    if binary_target is not None:
+        labels = labels_to_binary(labels, binary_target)
+        class_names = ['other', 'target']
+
+    dataset = paths_and_labels_to_dataset(
+        image_paths=image_paths,
+        image_size=image_size,
+        num_channels=3,
+        labels=labels,
+        label_mode='categorical' if binary_target is None else 'binary',
+        num_classes=len(class_names) if class_names else 0,
+        interpolation='bilinear',
+        crop_to_aspect_ratio=False,
+        data_format='channels_last',
+    )
+
+    if batch_size is not None:
+        dataset = dataset.batch(batch_size)
+    dataset = dataset.prefetch(tf.data.AUTOTUNE)
+    dataset.class_names = class_names
+    dataset.file_paths = image_paths
+    dataset.labels = labels
+
+    return dataset
+
+
+
+
+
+
+####################################
+
+# modified keras image_dataset_from_directory
+def load_from_directory2(
     directory,
     labels="inferred",
     label_mode="int",

@@ -50,11 +50,14 @@ def make_output_model(model, layers=None):
     outputmodel = EvalModel(layers, inputs=model.inputs, outputs=outputs)
     return outputmodel
 
-def make_output_nodes(model, layers=None):
-    if layers is None:
-        layers = [l.name for l in model.layers if isinstance(l, keras.layers.Activation)]
-        layers.append('prediction')
-    outputs = [layer.output for layer in model.layers if layer.name in layers]
+
+def make_output_nodes(model, output_layers=None):
+    if output_layers is None:
+        output_layers = [l.name for l in model.layers if isinstance(l, keras.layers.Activation)]
+        output_layers.append('prediction')
+    elif output_layers[-1] != 'prediction':
+        output_layers.append('prediction')
+    outputs = [layer.output for layer in model.layers if layer.name in output_layers]
     outputmodel = keras.src.Model(inputs=model.inputs, outputs=outputs)
     return outputmodel
 
