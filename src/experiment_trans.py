@@ -13,7 +13,7 @@ import patterns as pats
 import const
 from trans_model import transactions_to_dataframe, build_transaction_model, fit_medians #, TransactionLayer, transactions_to_dataframe, BinarizeLayer
 from pattern_model import build_pattern_model#PatternLayer, PatternSelect, PatternMatch, PatModel
-from pattern_model import PatternMatch
+#from pattern_model import PatternMatch
 
 
 def pats_by_layer(bdf, columns, label, minsup, minsupratio):
@@ -56,6 +56,21 @@ def build_pre_model(base_model, trainds):
     return tmodel, bdf
 
 
+def matching_dataset(pt, ds):
+    featextract = pt.layers[-1].feat_extract
+    matcher = pt.layers[-1].pat_matcher
+    allmatches = list()
+    for step, (x, y) in enumerate(ds):
+        print(step)
+        feats = featextract(x)
+        matches = matcher(feats[1])
+        midx = tf.squeeze(tf.where(matches))
+        midx = tf.cast(midx, dtype=tf.int32)
+        midx += step * len(x)
+        allmatches += midx.numpy().tolist()
+        #allmatches.append(midx)
+    print(1)
+
 def test():
     trainds = data.load_from_directory('datasets/' + 'images_large' + '/train')
 
@@ -75,17 +90,43 @@ def test():
     cpats = pats_by_layer(bdf, 'activation-', 0.0, minsup, minsupratio)
     pattern = cpats[0]
 
-    pt = build_pattern_model(pattern['pattern'], base_model, tmodel)
-    ptpreds = pt.evaluate(trainds, return_dict=True)
+    matches = pattern['targetmatches'] + pattern['othermatches']
+    images = [trainds.file_paths[p] for p in matches]
+    labels = [trainds.labels[p] for p in matches]
+    subds = data.image_subset(images, labels, trainds.class_names, binary_target=0)
+
+    pmodel, ptrain = build_pattern_model(pattern['pattern'], base_model, tmodel)
+    #sres = ptrain.evaluate(subds, return_dict=True)
+    #ptrain.fit(subds, epochs=10)
+    #ptrain.layers[-1].pat_pred.save_weights('session/ptrain.weights.h5')
+    ptrain.layers[-1].pat_pred.load_weights('session/ptrain.weights.h5')
+    #ptrain.save('session/ptrain.keras')
+    #sresa = ptrain.evaluate(subds, return_dict=True)
+
+    ptpreds = pmodel.evaluate(trainds, return_dict=True)
     basepreds = base_model.evaluate(trainds, return_dict=True)
 
     print(1)
+
+
+@tf.function
+def scattertest():
+    a = tf.constant([[1, 2], [3, 4]])
+    idx = tf.constant([1, 3])
+    ta = tf.TensorArray(tf.int32, size=5)
+    ta = ta.scatter(idx, a)
+    c = ta.stack()
+    #tf.map_fn(lambda x: x + 1, a)
+    return c
 
 
 def run():
     #tf.config.run_functions_eagerly(True)
 
     test()
+    return
+
+
 
     #trainds = data.load_from_directory('datasets/' + 'images_large' + '/train')
     trainds = data.load_from_directory('datasets/' + 'images_large' + '/train')
