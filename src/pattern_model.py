@@ -49,6 +49,7 @@ class PatternBranch(layers.Layer):
         self.pat_matcher = pat_matcher
         self.base_pred = base_pred
         self.pat_pred = pat_pred
+        self.categorizer = BinaryToCategorical(0, 3)
         self.matchcount = 0
         self.nonmatchcount = 0
 
@@ -64,17 +65,31 @@ class PatternBranch(layers.Layer):
 
         # Separate inputs matching pattern
         matches = self.pat_matcher(feats[1])
-        midx = tf.squeeze(tf.where(matches))
-        midx = tf.cast(midx, dtype=tf.int32)
+        midx = tf.cast(tf.squeeze(tf.where(matches)), dtype=tf.int32)
         fmatches = tf.gather(feats[0], indices=midx, axis=0)
         fmatches.set_shape([None] + feats[0].shape[1:])
         #self.matchcount += len(fmatches)
         selectedfeats = tf.gather(fmatches, indices=self.pat_matcher.pat_index, axis=3)
-        patpreds = self.pat_pred(selectedfeats)
+        patbinpreds = self.pat_pred(selectedfeats)
+
+        # Collect matching predictions classified as target class
+        pidx = tf.cast(tf.squeeze(tf.where(tf.squeeze(patbinpreds) >= 0.5)), dtype=tf.int32)
+        ppreds = tf.gather(patbinpreds, indices=pidx, axis=0)
+        patpatpreds = self.categorizer(ppreds)
+
+        # Redo base prediction for pat-matching inputs with low conf
+        bidx = tf.cast(tf.squeeze(tf.where(tf.squeeze(patbinpreds) < 0.5)), dtype=tf.int32)
+        bmatches = tf.gather(fmatches, indices=bidx, axis=0)
+        patbasepreds = self.base_pred(bmatches)
+
+        # Regroup all pat-matching predictions
+        patpredsarray = tf.TensorArray(inputs.dtype, dynamic_size=True, size=0)
+        patpredsarray = patpredsarray.scatter(pidx, patpatpreds)
+        patpredsarray = patpredsarray.scatter(bidx, patbasepreds)
+        patpreds = patpredsarray.stack()
 
         nonmatches = tf.math.logical_not(matches)
-        nidx = tf.squeeze(tf.where(nonmatches))
-        nidx = tf.cast(nidx, dtype=tf.int32)
+        nidx = tf.cast(tf.squeeze(tf.where(nonmatches)), dtype=tf.int32)
         fnonmatches = tf.gather(feats[0], indices=nidx, axis=0)
         fnonmatches.set_shape([None] + feats[0].shape[1:])   # Needed for SymbolicTensor
         #self.nonmatchcount += len(fnonmatches)
@@ -129,9 +144,9 @@ def build_pattern_model(pattern, base_model, trans_model):
     x = layers.Activation('relu')(x)
     x = layers.GlobalAveragePooling2D()(x)
     dense1 = layers.Dense(1, name='prediction', activation='sigmoid')(x)
-    dense3 = BinaryToCategorical(0, 3)(dense1)
+    #dense3 = BinaryToCategorical(0, 3)(dense1)
     pattrain = Model(inputs=inputs, outputs=dense1, name='pat_train')
-    patpred = Model(inputs=inputs, outputs=dense3, name='pat_pred')
+    #patpred = Model(inputs=inputs, outputs=dense3, name='pat_pred')
 
     inputs = keras.Input(shape=featextract.input_shape[1:])
     x = PatternTrainer(featextract, pattrain, matcher.pat_index)(inputs)
@@ -140,7 +155,7 @@ def build_pattern_model(pattern, base_model, trans_model):
                   metrics=['accuracy'])
 
     inputs = keras.Input(base_model.input_shape[1:])
-    x = PatternBranch(featextract, matcher, basepred, patpred)(inputs)
+    x = PatternBranch(featextract, matcher, basepred, pattrain)(inputs)
     pmodel = Model(inputs=inputs, outputs=x)
     pmodel.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
                   metrics=['accuracy'])

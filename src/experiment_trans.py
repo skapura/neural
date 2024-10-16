@@ -121,7 +121,7 @@ def scattertest():
 
 
 def run():
-    #tf.config.run_functions_eagerly(True)
+    tf.config.run_functions_eagerly(True)
 
     test()
     return
