@@ -65,47 +65,47 @@ class PatternBranch(layers.Layer):
         feats = self.feat_extract(inputs)
 
         # Separate inputs matching pattern
+        mergedpreds = tf.TensorArray(inputs.dtype, dynamic_size=True, size=0)
         matches = self.pat_matcher(feats[1])
-        midx = tf.cast(tf.squeeze(tf.where(matches)), dtype=tf.int32)
+        midx = tf.cast(tf.reshape(tf.where(matches), shape=[-1]), dtype=tf.int32)
         #a = tf.cond(tf.equal(tf.size(midx), 0), lambda: True, lambda: False)
-        if tf.equal(tf.size(midx), 0):
-            print('empty')
-        fmatches = tf.gather(feats[0], indices=midx, axis=0)
-        fmatches.set_shape([None] + feats[0].shape[1:])
-        #self.matchcount += len(fmatches)
-        selectedfeats = tf.gather(fmatches, indices=self.pat_matcher.pat_index, axis=3)
-        patbinpreds = self.pat_pred(selectedfeats)
+        if not tf.equal(tf.size(midx), 0):
+            patpredsarray = tf.TensorArray(inputs.dtype, dynamic_size=True, size=0)
+            fmatches = tf.gather(feats[0], indices=midx, axis=0)
+            fmatches.set_shape([None] + feats[0].shape[1:])
+            #self.matchcount += len(fmatches)
+            selectedfeats = tf.gather(fmatches, indices=self.pat_matcher.pat_index, axis=3)
+            patbinpreds = self.pat_pred(selectedfeats)
 
-        # Collect matching predictions classified as target class
-        pidx = tf.cast(tf.squeeze(tf.where(tf.squeeze(patbinpreds) >= 0.5)), dtype=tf.int32)
-        ppreds = tf.gather(patbinpreds, indices=pidx, axis=0)
-        ppreds.set_shape([None] + patbinpreds.shape[1:])
-        patpatpreds = self.categorizer(ppreds)
+            # Collect matching predictions classified as target class
+            pidx = tf.cast(tf.reshape(tf.where(tf.squeeze(patbinpreds) >= 0.5), shape=[-1]), dtype=tf.int32)
+            if not tf.equal(tf.size(pidx), 0):
+                ppreds = tf.gather(patbinpreds, indices=pidx, axis=0)
+                ppreds.set_shape([None] + patbinpreds.shape[1:])
+                patpatpreds = self.categorizer(ppreds)
+                patpredsarray = patpredsarray.scatter(pidx, patpatpreds)
 
-        # Redo base prediction for pat-matching inputs with low conf
-        bidx = tf.cast(tf.squeeze(tf.where(tf.squeeze(patbinpreds) < 0.5)), dtype=tf.int32)
-        bmatches = tf.gather(fmatches, indices=bidx, axis=0)
-        bmatches.set_shape([None] + fmatches.shape[1:])
-        patbasepreds = self.base_pred(bmatches)
+            # Redo base prediction for pat-matching inputs with low conf
+            bidx = tf.cast(tf.reshape(tf.where(tf.squeeze(patbinpreds) < 0.5), shape=[-1]), dtype=tf.int32)
+            if not tf.equal(tf.size(bidx), 0):
+                bmatches = tf.gather(fmatches, indices=bidx, axis=0)
+                bmatches.set_shape([None] + fmatches.shape[1:])
+                patbasepreds = self.base_pred(bmatches)
+                patpredsarray = patpredsarray.scatter(bidx, patbasepreds)
 
-        # Regroup all pat-matching predictions
-        patpredsarray = tf.TensorArray(inputs.dtype, dynamic_size=True, size=0)
-        patpredsarray = patpredsarray.scatter(pidx, patpatpreds)
-        patpredsarray = patpredsarray.scatter(bidx, patbasepreds)
-        patpreds = patpredsarray.stack()
+            patpreds = patpredsarray.stack()
+            mergedpreds = mergedpreds.scatter(midx, patpreds)
 
         nonmatches = tf.math.logical_not(matches)
-        nidx = tf.cast(tf.squeeze(tf.where(nonmatches)), dtype=tf.int32)
-        fnonmatches = tf.gather(feats[0], indices=nidx, axis=0)
-        fnonmatches.set_shape([None] + feats[0].shape[1:])   # Needed for SymbolicTensor
-        #self.nonmatchcount += len(fnonmatches)
-        basepreds = self.base_pred(fnonmatches)
+        nidx = tf.cast(tf.reshape(tf.where(nonmatches), shape=[-1]), dtype=tf.int32)
+        if not tf.equal(tf.size(nidx), 0):
+            fnonmatches = tf.gather(feats[0], indices=nidx, axis=0)
+            fnonmatches.set_shape([None] + feats[0].shape[1:])   # Needed for SymbolicTensor
+            #self.nonmatchcount += len(fnonmatches)
+            basepreds = self.base_pred(fnonmatches)
+            mergedpreds = mergedpreds.scatter(nidx, basepreds)
 
-        mergedpreds = tf.TensorArray(inputs.dtype, dynamic_size=True, size=0)
-        mergedpreds = mergedpreds.scatter(midx, patpreds)
-        mergedpreds = mergedpreds.scatter(nidx, basepreds)
         outs = mergedpreds.stack()
-
         return outs
 
 

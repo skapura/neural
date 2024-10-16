@@ -123,6 +123,13 @@ def scattertest():
 def run():
     #tf.config.run_functions_eagerly(True)
 
+    a = tf.constant([[1], [2], [3]])
+    o = tf.constant([[5]])
+    b = tf.squeeze(a)
+    bo = tf.squeeze(o)
+    b2 = tf.reshape(a, shape=[-1])
+    bo2 = tf.reshape(o, shape=[-1])
+
     test()
     return
 
