@@ -60,12 +60,16 @@ class PatternBranch(layers.Layer):
     def compute_output_shape(self, input_shape):
         return [None, 3]
 
+    @tf.function
     def call(self, inputs):
         feats = self.feat_extract(inputs)
 
         # Separate inputs matching pattern
         matches = self.pat_matcher(feats[1])
         midx = tf.cast(tf.squeeze(tf.where(matches)), dtype=tf.int32)
+        #a = tf.cond(tf.equal(tf.size(midx), 0), lambda: True, lambda: False)
+        if tf.equal(tf.size(midx), 0):
+            print('empty')
         fmatches = tf.gather(feats[0], indices=midx, axis=0)
         fmatches.set_shape([None] + feats[0].shape[1:])
         #self.matchcount += len(fmatches)
@@ -75,11 +79,13 @@ class PatternBranch(layers.Layer):
         # Collect matching predictions classified as target class
         pidx = tf.cast(tf.squeeze(tf.where(tf.squeeze(patbinpreds) >= 0.5)), dtype=tf.int32)
         ppreds = tf.gather(patbinpreds, indices=pidx, axis=0)
+        ppreds.set_shape([None] + patbinpreds.shape[1:])
         patpatpreds = self.categorizer(ppreds)
 
         # Redo base prediction for pat-matching inputs with low conf
         bidx = tf.cast(tf.squeeze(tf.where(tf.squeeze(patbinpreds) < 0.5)), dtype=tf.int32)
         bmatches = tf.gather(fmatches, indices=bidx, axis=0)
+        bmatches.set_shape([None] + fmatches.shape[1:])
         patbasepreds = self.base_pred(bmatches)
 
         # Regroup all pat-matching predictions
