@@ -146,3 +146,7 @@ def heatmap(img_array, model, last_conv_layer_name, pred_index=None):
     heatmapimage = cv2.resize(heatmap, (w, h))
 
     return heatmap, heatmapimage
+
+
+def categorical_to_binary(batch, target):
+    return tf.map_fn(lambda x: 1 if tf.math.argmax(x) == target else 0, batch)

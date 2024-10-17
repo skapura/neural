@@ -73,6 +73,7 @@ def matching_dataset(pt, ds):
 
 def test():
     trainds = data.load_from_directory('datasets/' + 'images_large' + '/train')
+    valds = data.load_from_directory('datasets/' + 'images_large' + '/val')
 
     patlayers = ['activation']
     base_model = models.load_model('largeimage_small.keras', compile=True)
@@ -104,8 +105,8 @@ def test():
     #sresa = ptrain.evaluate(subds, return_dict=True)
 
     #ptpreds = pmodel.evaluate(trainds, return_dict=True)
-    pat_evaluate(pmodel, trainds)
-    basepreds = base_model.evaluate(trainds, return_dict=True)
+    pat_eval = pat_evaluate(pmodel, valds)
+    base_eval = base_model.evaluate(valds, return_dict=True)
 
     print(ptpreds)
     print(basepreds)
