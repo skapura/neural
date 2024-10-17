@@ -2,6 +2,7 @@ import tensorflow as tf
 import keras
 from keras import layers
 from keras.src.models import Model
+from keras.src.utils import Progbar
 from trans_model import build_feature_extraction
 import mlutil
 
@@ -50,8 +51,10 @@ class PatternBranch(layers.Layer):
         self.base_pred = base_pred
         self.pat_pred = pat_pred
         self.categorizer = BinaryToCategorical(0, 3)
-        self.matchcount = 0
-        self.nonmatchcount = 0
+        self.matchcount = tf.Variable(0)
+        self.matchpatcount = tf.Variable(0)
+        self.matchbasecount = tf.Variable(0)
+        self.nonmatchcount = tf.Variable(0)
 
     def build(self, input_shape):
         super().build(input_shape)
@@ -62,24 +65,28 @@ class PatternBranch(layers.Layer):
 
     @tf.function
     def call(self, inputs):
+        self.matchcount.assign(0)
+        self.matchpatcount.assign(0)
+        self.matchbasecount.assign(0)
+        self.nonmatchcount.assign(0)
         feats = self.feat_extract(inputs)
 
         # Separate inputs matching pattern
         mergedpreds = tf.TensorArray(inputs.dtype, dynamic_size=True, size=0)
         matches = self.pat_matcher(feats[1])
         midx = tf.cast(tf.reshape(tf.where(matches), shape=[-1]), dtype=tf.int32)
-        #a = tf.cond(tf.equal(tf.size(midx), 0), lambda: True, lambda: False)
         if not tf.equal(tf.size(midx), 0):
+            self.matchcount.assign(tf.size(midx))
             patpredsarray = tf.TensorArray(inputs.dtype, dynamic_size=True, size=0)
             fmatches = tf.gather(feats[0], indices=midx, axis=0)
             fmatches.set_shape([None] + feats[0].shape[1:])
-            #self.matchcount += len(fmatches)
             selectedfeats = tf.gather(fmatches, indices=self.pat_matcher.pat_index, axis=3)
             patbinpreds = self.pat_pred(selectedfeats)
 
             # Collect matching predictions classified as target class
             pidx = tf.cast(tf.reshape(tf.where(tf.squeeze(patbinpreds) >= 0.5), shape=[-1]), dtype=tf.int32)
             if not tf.equal(tf.size(pidx), 0):
+                self.matchpatcount.assign(tf.size(pidx))
                 ppreds = tf.gather(patbinpreds, indices=pidx, axis=0)
                 ppreds.set_shape([None] + patbinpreds.shape[1:])
                 patpatpreds = self.categorizer(ppreds)
@@ -88,6 +95,7 @@ class PatternBranch(layers.Layer):
             # Redo base prediction for pat-matching inputs with low conf
             bidx = tf.cast(tf.reshape(tf.where(tf.squeeze(patbinpreds) < 0.5), shape=[-1]), dtype=tf.int32)
             if not tf.equal(tf.size(bidx), 0):
+                self.matchbasecount.assign(tf.size(bidx))
                 bmatches = tf.gather(fmatches, indices=bidx, axis=0)
                 bmatches.set_shape([None] + fmatches.shape[1:])
                 patbasepreds = self.base_pred(bmatches)
@@ -99,9 +107,9 @@ class PatternBranch(layers.Layer):
         nonmatches = tf.math.logical_not(matches)
         nidx = tf.cast(tf.reshape(tf.where(nonmatches), shape=[-1]), dtype=tf.int32)
         if not tf.equal(tf.size(nidx), 0):
+            self.nonmatchcount.assign(tf.size(nidx))
             fnonmatches = tf.gather(feats[0], indices=nidx, axis=0)
             fnonmatches.set_shape([None] + feats[0].shape[1:])   # Needed for SymbolicTensor
-            #self.nonmatchcount += len(fnonmatches)
             basepreds = self.base_pred(fnonmatches)
             mergedpreds = mergedpreds.scatter(nidx, basepreds)
 
@@ -166,3 +174,24 @@ def build_pattern_model(pattern, base_model, trans_model):
     pmodel.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
                   metrics=['accuracy'])
     return pmodel, pat_trainer
+
+
+def pat_evaluate(model, ds):
+    numbatches = tf.data.experimental.cardinality(ds).numpy()
+    p = Progbar(numbatches)
+    matchcount = 0
+    matchpatcount = 0
+    matchbasecount = 0
+    nonmatchcount = 0
+    acc = keras.metrics.CategoricalAccuracy()
+    for step, (x_batch, y_batch) in enumerate(ds):
+        #y_pred = model.predict(x_batch)
+        y_pred = model(x_batch)
+        matchcount += model.layers[-1].matchcount.numpy()
+        matchpatcount += model.layers[-1].matchpatcount.numpy()
+        matchbasecount += model.layers[-1].matchbasecount.numpy()
+        nonmatchcount += model.layers[-1].nonmatchcount.numpy()
+        acc.update_state(y_batch, y_pred)
+        p.update(step + 1)
+    a = acc.result()
+    print(a)

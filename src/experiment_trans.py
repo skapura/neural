@@ -12,7 +12,7 @@ from patterns import feature_activation_max
 import patterns as pats
 import const
 from trans_model import transactions_to_dataframe, build_transaction_model, fit_medians #, TransactionLayer, transactions_to_dataframe, BinarizeLayer
-from pattern_model import build_pattern_model#PatternLayer, PatternSelect, PatternMatch, PatModel
+from pattern_model import build_pattern_model, pat_evaluate#PatternLayer, PatternSelect, PatternMatch, PatModel
 #from pattern_model import PatternMatch
 
 
@@ -103,10 +103,12 @@ def test():
     #ptrain.save('session/ptrain.keras')
     #sresa = ptrain.evaluate(subds, return_dict=True)
 
-    ptpreds = pmodel.evaluate(trainds, return_dict=True)
+    #ptpreds = pmodel.evaluate(trainds, return_dict=True)
+    pat_evaluate(pmodel, trainds)
     basepreds = base_model.evaluate(trainds, return_dict=True)
 
-    print(1)
+    print(ptpreds)
+    print(basepreds)
 
 
 @tf.function
