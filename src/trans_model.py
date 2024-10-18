@@ -99,6 +99,7 @@ def build_feature_extraction(base_model, output_layers=None, transaction_only=Tr
         model = Model(inputs=inputs, outputs=outs)
         return model
 
+
 def build_transaction_model(base_model, trainds, output_layers=None):
     featextract, baseoutput = build_feature_extraction(base_model, output_layers)
 
@@ -137,14 +138,6 @@ def fit_medians(model, ds):
 
 
 def transactions_to_dataframe(model, trans, ds=None):
-    #layers = model.get_layer('pat_binarize').layer_names
-    #header = []
-    #for i in range(len(layers) - 1):
-    #    layername = layers[i]
-    #    nodecount = model.layers[2 + i].input.shape[-1]
-    #    for n in range(nodecount):
-    #        header.append(layername + '-' + str(n))
-
     df = pd.DataFrame(trans[0], columns=model.get_layer('pat_binarize').feature_names)
     df.index.name = 'index'
 

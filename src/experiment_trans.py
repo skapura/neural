@@ -11,6 +11,7 @@ import pandas as pd
 from patterns import feature_activation_max
 import patterns as pats
 import const
+from azure import AzureSession
 from trans_model import transactions_to_dataframe, build_transaction_model, fit_medians #, TransactionLayer, transactions_to_dataframe, BinarizeLayer
 from pattern_model import build_pattern_model, pat_evaluate#PatternLayer, PatternSelect, PatternMatch, PatModel
 #from pattern_model import PatternMatch
@@ -46,6 +47,15 @@ def build_model():
     return model
 
 
+def train_base_model(trainds, model_path, epochs):
+    base_model = build_model()
+    base_model.fit(trainds, epochs=epochs)
+    base_model.save(model_path)
+    return base_model
+
+
+
+
 def build_pre_model(base_model, trainds):
     tmodel = BinarizeLayer.train(base_model, trainds)
     tmodel.save('session/tmodel.keras')
@@ -75,21 +85,33 @@ def test():
     trainds = data.load_from_directory('datasets/' + 'images_large' + '/train')
     valds = data.load_from_directory('datasets/' + 'images_large' + '/val')
 
-    patlayers = ['activation']
-    base_model = models.load_model('largeimage_small.keras', compile=True)
-    #tmodel = build_transaction_model(base_model, trainds, patlayers)
-    #tmodel.save('session/test.keras')
-    tmodel = models.load_model('session/test.keras', compile=True)
+    # Base model
+    basepath = 'session/base.keras'
+    base_model = train_base_model(trainds, basepath, 30)
+    base_model = models.load_model(basepath, compile=True)
 
-    #trans = tmodel.predict(trainds)
-    #bdf = transactions_to_dataframe(tmodel, trans, trainds)
-    #bdf.to_csv('session/bdf.csv')
+
+    patlayers = ['activation']
+    #base_model = build_model()
+    #base_model.fit(trainds, epochs=30)
+    #evalb = base_model.evaluate(trainds, return_dict=True)
+    #evalv = base_model.evaluate(valds, return_dict=True)
+    #base_model.save('session/base.keras')
+    #base_model = models.load_model('largeimage_small.keras', compile=True)
+    base_model = models.load_model('session/base.keras', compile=True)
+    tmodel = build_transaction_model(base_model, trainds, patlayers)
+    tmodel.save('session/tmodel.keras')
+    #tmodel = models.load_model('session/test.keras', compile=True)
+
+    trans = tmodel.predict(trainds)
+    bdf = transactions_to_dataframe(tmodel, trans, trainds)
+    bdf.to_csv('session/bdf.csv')
     bdf = pd.read_csv('session/bdf.csv', index_col='index')
 
     minsup = 0.5
     minsupratio = 1.1
     cpats = pats_by_layer(bdf, 'activation-', 0.0, minsup, minsupratio)
-    pattern = cpats[0]
+    pattern = cpats[1]
 
     matches = pattern['targetmatches'] + pattern['othermatches']
     images = [trainds.file_paths[p] for p in matches]
@@ -98,15 +120,16 @@ def test():
 
     pmodel, ptrain = build_pattern_model(pattern['pattern'], base_model, tmodel)
     #sres = ptrain.evaluate(subds, return_dict=True)
-    #ptrain.fit(subds, epochs=10)
+    ptrain.fit(subds, epochs=30)
     #ptrain.layers[-1].pat_pred.save_weights('session/ptrain.weights.h5')
-    ptrain.layers[-1].pat_pred.load_weights('session/ptrain.weights.h5')
+    #ptrain.layers[-1].pat_pred.load_weights('session/ptrain.weights.h5')
     #ptrain.save('session/ptrain.keras')
     #sresa = ptrain.evaluate(subds, return_dict=True)
 
     #ptpreds = pmodel.evaluate(trainds, return_dict=True)
-    pat_eval = pat_evaluate(pmodel, valds)
-    base_eval = base_model.evaluate(valds, return_dict=True)
+    eval_pat_trn = ptrain.evaluate(subds)
+    eval_pat = pat_evaluate(pmodel, trainds)
+    eval_base = base_model.evaluate(trainds, return_dict=True)
 
     print(ptpreds)
     print(basepreds)
@@ -123,8 +146,27 @@ def scattertest():
     return c
 
 
+def remote_train(model, session):
+    model.save('session/temp_model.keras')
+    session.put('session/temp_model.keras', dest='neural/session/temp_model.keras')
+    session.execute('cd neural')
+    session.execute('python src/train_spec.py 3')
+    #session.execute('python ')
+    print(1)
+
+
 def run():
     #tf.config.run_functions_eagerly(True)
+
+
+    base_model = build_model()
+    sess = AzureSession()
+    sess.open()
+    remote_train(base_model, sess)
+    #sess.execute('ls -l')
+    #sess.execute('cat gpu_test.py')
+    sess.close()
+
 
     a = tf.constant([[1], [2], [3]])
     o = tf.constant([[5]])

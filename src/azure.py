@@ -6,6 +6,60 @@ import os
 import const
 
 
+class AzureSession:
+    def __init__(self):
+        self.ssh = None
+        self.host = None
+        self.user = None
+        self.chan = None
+        self.stdin = None
+
+    def open(self, host=const.AZURE_HOST, user=const.AZURE_USER):
+        self.ssh = SSHClient()
+        self.host = host
+        self.user = user
+        self.ssh.load_system_host_keys()
+        self.ssh.connect(host, username=user)
+        self.chan = self.ssh.invoke_shell(term='bash', width=80, height=24, width_pixels=0, height_pixels=0, environment=None)
+        self.stdin = self.chan.makefile('wb')
+        self.flush()
+
+    def close(self):
+        self.stdin.write('exit\n')
+        self.stdin.flush()
+        self.ssh.close()
+        self.ssh = None
+        self.host = None
+        self.user = None
+        self.chan = None
+        self.stdin = None
+
+    def flush(self):
+        while True:     # TODO: will hang if prompt divided between 2 buffer reads
+            buf = self.chan.recv(1024)
+            bufstr = str(buf).split('\\r\\n')
+            sys.stdout.buffer.write(buf)
+            a = bufstr[-1]
+            #if len(buf) == 0 or bufstr[-1].startswith('nskapura@vm-tf:~$') or bufstr[-1] == 'b\'nskapura@vm-tf:~$ \'':
+            if len(buf) == 0 or 'nskapura@vm-tf:' in bufstr[-1]:
+                break
+
+    def execute(self, command):
+        self.stdin.write(command + '\n')
+        self.stdin.flush()
+        self.flush()
+
+    def put(self, source, dest=''):
+        scp = SCPClient(self.ssh.get_transport())
+        scp.put(source, const.AZURE_ROOT + dest)
+        scp.close()
+
+    def get(self, source, dest='.'):
+        scp = SCPClient(self.ssh.get_transport())
+        scp.get(const.AZURE_ROOT + source, dest)
+        scp.close()
+
+
 def put(source, dest='', host=const.AZURE_HOST, user=const.AZURE_USER):
     ssh = SSHClient()
     ssh.load_system_host_keys()
@@ -38,6 +92,9 @@ def shell(command, host=const.AZURE_HOST, user=const.AZURE_USER):
             break
         sys.stdout.buffer.write(bytes)
     ssh.close()
+
+
+
 
 
 def execute(command, host=const.AZURE_HOST, user=const.AZURE_USER):
