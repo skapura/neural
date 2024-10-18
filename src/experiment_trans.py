@@ -151,8 +151,9 @@ def remote_train(model, session):
     session.put('session/temp_model.keras', dest='neural/session/temp_model.keras')
     session.execute('cd neural')
     session.execute('python src/train_spec.py 3')
-    #session.execute('python ')
-    print(1)
+    session.get('neural/session/temp_model.keras', dest='session/temp_model.keras')
+    trained = models.load_model('session/temp_model.keras', compile=True)
+    return trained
 
 
 def run():
