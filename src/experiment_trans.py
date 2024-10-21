@@ -4,8 +4,12 @@ from keras.src.utils import Progbar
 from keras.src.models import Functional
 import data
 import keras
+import pickle
 import mlutil
 import tensorflow as tf
+import inspect
+import ast
+import astunparse
 import numpy as np
 import pandas as pd
 from patterns import feature_activation_max
@@ -145,25 +149,115 @@ def scattertest():
     #tf.map_fn(lambda x: x + 1, a)
     return c
 
+def load_data():
+    trainds = data.load_from_directory('datasets/images_large/train')
+    bdf = pd.read_csv('session/bdf.csv', index_col='index')
+    minsup = 0.5
+    minsupratio = 1.1
+    #cpats = pats_by_layer(bdf, 'activation-', 0.0, minsup, minsupratio)
+    columns = 'activation-'
+    label = 0.0
+    col = [c for c in bdf.columns if columns in c]
+    sel = bdf.loc[bdf['label'] == label].drop(const.META, axis=1)[col]
+    notsel = bdf.loc[bdf['label'] != label].drop(const.META, axis=1)[col]
+    print('target # instances: ' + str(len(sel)))
+    print('other # instances: ' + str(len(notsel)))
+    cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
+    pattern = cpats[1]
+
+    matches = pattern['targetmatches'] + pattern['othermatches']
+    images = [trainds.file_paths[p] for p in matches]
+    labels = [trainds.labels[p] for p in matches]
+    subds = data.image_subset(images, labels, trainds.class_names)#, binary_target=0)
+    return subds
+
 
 def remote_train(model, session):
     model.save('session/temp_model.keras')
     session.put('session/temp_model.keras', dest='neural/session/temp_model.keras')
-    session.execute('cd neural')
     session.execute('python src/train_spec.py 3')
     session.get('neural/session/temp_model.keras', dest='session/temp_model.keras')
     trained = models.load_model('session/temp_model.keras', compile=True)
     return trained
 
+def remote_eval(model, session, data_func=None):
+    model.save('session/temp_model.keras')
+    session.put('session/temp_model.keras', dest='neural/session/temp_model.keras')
+
+    # Modify data loader function
+    if data_func is not None:
+
+        # Parse data function
+        fcode = inspect.getsource(data_func)
+        rt = ast.parse(fcode).body[0]
+
+        # Parse spec file
+        with open('src/eval_spec.py', 'r') as file:
+            scode = file.read()
+        spectree = ast.parse(scode)
+
+        # Replace data loader function
+        class ReplaceFunctionDef(ast.NodeTransformer):
+            def visit_FunctionDef(self, node):
+                if node.name == 'load_data':
+                    new_node = rt
+                    return new_node
+                return node
+        transformer = ReplaceFunctionDef()
+        newtree = transformer.visit(spectree)
+        newspec = astunparse.unparse(newtree)
+        with open('session/temp_eval_spec.py', 'w') as file:
+            file.write(newspec)
+        session.put('session/temp_eval_spec.py', dest='neural/src/eval_spec.py')
+        session.put('session/bdf.csv', dest='neural/session/bdf.csv')
+
+    # Copy default spec
+    else:
+        session.put('src/eval_spec.py', dest='neural/src/eval_spec.py')
+
+    #session.execute('cd neural')
+    session.execute('python src/eval_spec.py')
+    session.get('neural/session/results.pkl', dest='session/results.pkl')
+    with open('session/results.pkl', 'rb') as file:
+        results = pickle.load(file)
+    return results
+
+def text(params):
+    a = mlutil.parse_feature_ref('test')
+    print(params)
 
 def run():
     #tf.config.run_functions_eagerly(True)
 
+    # import inspect
+    # import ast
+    # import astunparse
+    # replacefunc = inspect.getsource(text)
+    # ab = __file__
+    # with open('src/eval_spec.py', 'r') as file:
+    #     code = file.read()
+    # tree = ast.parse(code)
+    # rt = ast.parse(replacefunc).body[0]
+    #
+    # class ReplaceFunctionDef(ast.NodeTransformer):
+    #     def visit_FunctionDef(self, node):
+    #         if node.name == 'load_data':
+    #             new_node = rt
+    #             return new_node
+    #         return node
+    #
+    # trans = ReplaceFunctionDef()
+    # newtree = trans.visit(tree)
+    # newtext = astunparse.unparse(newtree)
+
 
     base_model = build_model()
     sess = AzureSession()
-    sess.open()
-    remote_train(base_model, sess)
+    sess.open(working_dir='neural')
+    model = sess.train(base_model, epochs=30)
+    r = sess.evaluate(model)
+    #model = remote_train(base_model, sess)
+    #r = remote_eval(model, sess, data_func=None)
     #sess.execute('ls -l')
     #sess.execute('cat gpu_test.py')
     sess.close()
