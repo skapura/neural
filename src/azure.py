@@ -65,8 +65,8 @@ class AzureSession:
         scp.get(const.AZURE_ROOT + source, dest)
         scp.close()
 
-    def train(self, model, epochs=1, func_def=None):
-        self.upload_spec('src/eval_spec.py', func_def)
+    def train(self, model, epochs=1, data_loader=None):
+        self.upload_spec('src/train_spec.py', data_loader)
         model.save('session/temp_model.keras')
         self.put('session/temp_model.keras', dest='neural/session/temp_model.keras')
         self.execute('python src/train_spec.py ' + str(epochs))
@@ -74,8 +74,8 @@ class AzureSession:
         trained = models.load_model('session/temp_model.keras', compile=True)
         return trained
 
-    def evaluate(self, model, func_def=None):
-        self.upload_spec('src/eval_spec.py', func_def)
+    def evaluate(self, model, data_loader=None):
+        self.upload_spec('src/eval_spec.py', data_loader)
         model.save('session/temp_model.keras')
         self.put('session/temp_model.keras', dest='neural/session/temp_model.keras')
         self.execute('python src/eval_spec.py')

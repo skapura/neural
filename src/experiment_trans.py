@@ -229,46 +229,18 @@ def text(params):
 def run():
     #tf.config.run_functions_eagerly(True)
 
-    # import inspect
-    # import ast
-    # import astunparse
-    # replacefunc = inspect.getsource(text)
-    # ab = __file__
-    # with open('src/eval_spec.py', 'r') as file:
-    #     code = file.read()
-    # tree = ast.parse(code)
-    # rt = ast.parse(replacefunc).body[0]
-    #
-    # class ReplaceFunctionDef(ast.NodeTransformer):
-    #     def visit_FunctionDef(self, node):
-    #         if node.name == 'load_data':
-    #             new_node = rt
-    #             return new_node
-    #         return node
-    #
-    # trans = ReplaceFunctionDef()
-    # newtree = trans.visit(tree)
-    # newtext = astunparse.unparse(newtree)
-
 
     base_model = build_model()
     sess = AzureSession()
     sess.open(working_dir='neural')
+    sess.put('session/bdf.csv', dest='neural/session')
     model = sess.train(base_model, epochs=30)
-    r = sess.evaluate(model)
+    r = sess.evaluate(model, data_loader=load_data)
     #model = remote_train(base_model, sess)
     #r = remote_eval(model, sess, data_func=None)
     #sess.execute('ls -l')
     #sess.execute('cat gpu_test.py')
     sess.close()
-
-
-    a = tf.constant([[1], [2], [3]])
-    o = tf.constant([[5]])
-    b = tf.squeeze(a)
-    bo = tf.squeeze(o)
-    b2 = tf.reshape(a, shape=[-1])
-    bo2 = tf.reshape(o, shape=[-1])
 
     test()
     return

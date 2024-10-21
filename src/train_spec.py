@@ -1,6 +1,9 @@
 from keras import models
 import data
 import sys
+import pandas as pd
+import patterns as pats
+import const
 
 
 def load_data():
