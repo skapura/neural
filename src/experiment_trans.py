@@ -60,30 +60,30 @@ def train_base_model(trainds, model_path, epochs):
 
 
 
-def build_pre_model(base_model, trainds):
-    tmodel = BinarizeLayer.train(base_model, trainds)
-    tmodel.save('session/tmodel.keras')
-    #tmodel2 = models.load_model('session/tmodel.keras', compile=True)
-    trans = tmodel.predict(trainds)
-    bdf = transactions_to_dataframe(tmodel, trans, trainds)
-    bdf.to_csv('session/btrans.csv')
-    return tmodel, bdf
+# def build_pre_model(base_model, trainds):
+#     tmodel = BinarizeLayer.train(base_model, trainds)
+#     tmodel.save('session/tmodel.keras')
+#     #tmodel2 = models.load_model('session/tmodel.keras', compile=True)
+#     trans = tmodel.predict(trainds)
+#     bdf = transactions_to_dataframe(tmodel, trans, trainds)
+#     bdf.to_csv('session/btrans.csv')
+#     return tmodel, bdf
 
 
-def matching_dataset(pt, ds):
-    featextract = pt.layers[-1].feat_extract
-    matcher = pt.layers[-1].pat_matcher
-    allmatches = list()
-    for step, (x, y) in enumerate(ds):
-        print(step)
-        feats = featextract(x)
-        matches = matcher(feats[1])
-        midx = tf.squeeze(tf.where(matches))
-        midx = tf.cast(midx, dtype=tf.int32)
-        midx += step * len(x)
-        allmatches += midx.numpy().tolist()
-        #allmatches.append(midx)
-    print(1)
+# def matching_dataset(pt, ds):
+#     featextract = pt.layers[-1].feat_extract
+#     matcher = pt.layers[-1].pat_matcher
+#     allmatches = list()
+#     for step, (x, y) in enumerate(ds):
+#         print(step)
+#         feats = featextract(x)
+#         matches = matcher(feats[1])
+#         midx = tf.squeeze(tf.where(matches))
+#         midx = tf.cast(midx, dtype=tf.int32)
+#         midx += step * len(x)
+#         allmatches += midx.numpy().tolist()
+#         #allmatches.append(midx)
+#     print(1)
 
 def test():
     trainds = data.load_from_directory('datasets/' + 'images_large' + '/train')
@@ -139,16 +139,6 @@ def test():
     print(basepreds)
 
 
-@tf.function
-def scattertest():
-    a = tf.constant([[1, 2], [3, 4]])
-    idx = tf.constant([1, 3])
-    ta = tf.TensorArray(tf.int32, size=5)
-    ta = ta.scatter(idx, a)
-    c = ta.stack()
-    #tf.map_fn(lambda x: x + 1, a)
-    return c
-
 def load_data():
     trainds = data.load_from_directory('datasets/images_large/train')
     bdf = pd.read_csv('session/bdf.csv', index_col='index')
@@ -171,60 +161,6 @@ def load_data():
     subds = data.image_subset(images, labels, trainds.class_names)#, binary_target=0)
     return subds
 
-
-def remote_train(model, session):
-    model.save('session/temp_model.keras')
-    session.put('session/temp_model.keras', dest='neural/session/temp_model.keras')
-    session.execute('python src/train_spec.py 3')
-    session.get('neural/session/temp_model.keras', dest='session/temp_model.keras')
-    trained = models.load_model('session/temp_model.keras', compile=True)
-    return trained
-
-def remote_eval(model, session, data_func=None):
-    model.save('session/temp_model.keras')
-    session.put('session/temp_model.keras', dest='neural/session/temp_model.keras')
-
-    # Modify data loader function
-    if data_func is not None:
-
-        # Parse data function
-        fcode = inspect.getsource(data_func)
-        rt = ast.parse(fcode).body[0]
-
-        # Parse spec file
-        with open('src/eval_spec.py', 'r') as file:
-            scode = file.read()
-        spectree = ast.parse(scode)
-
-        # Replace data loader function
-        class ReplaceFunctionDef(ast.NodeTransformer):
-            def visit_FunctionDef(self, node):
-                if node.name == 'load_data':
-                    new_node = rt
-                    return new_node
-                return node
-        transformer = ReplaceFunctionDef()
-        newtree = transformer.visit(spectree)
-        newspec = astunparse.unparse(newtree)
-        with open('session/temp_eval_spec.py', 'w') as file:
-            file.write(newspec)
-        session.put('session/temp_eval_spec.py', dest='neural/src/eval_spec.py')
-        session.put('session/bdf.csv', dest='neural/session/bdf.csv')
-
-    # Copy default spec
-    else:
-        session.put('src/eval_spec.py', dest='neural/src/eval_spec.py')
-
-    #session.execute('cd neural')
-    session.execute('python src/eval_spec.py')
-    session.get('neural/session/results.pkl', dest='session/results.pkl')
-    with open('session/results.pkl', 'rb') as file:
-        results = pickle.load(file)
-    return results
-
-def text(params):
-    a = mlutil.parse_feature_ref('test')
-    print(params)
 
 def run():
     #tf.config.run_functions_eagerly(True)

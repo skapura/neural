@@ -45,8 +45,6 @@ class AzureSession:
             buf = self.chan.recv(1024)
             bufstr = str(buf).split('\\r\\n')
             sys.stdout.buffer.write(buf)
-            a = bufstr[-1]
-            #if len(buf) == 0 or bufstr[-1].startswith('nskapura@vm-tf:~$') or bufstr[-1] == 'b\'nskapura@vm-tf:~$ \'':
             if len(buf) == 0 or 'nskapura@vm-tf:' in bufstr[-1]:
                 break
 

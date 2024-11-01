@@ -181,15 +181,19 @@ def filter_patterns_by_layer(pats, layers):
 
 def unique_elements(pats):
     elems = {}
+    targetmatches = set()
+    othermatches = set()
     for index, p in enumerate(pats):
+        targetmatches.update(p['targetmatches'])
+        othermatches.update(p['othermatches'])
         for e in p['pattern']:
             if e in elems:
                 elems[e]['patterns'].append(index)
-                elems[e]['targetmatches'].union(p['targetmatches'])
-                elems[e]['othermatches'].union(p['othermatches'])
+                elems[e]['targetmatches'].update(p['targetmatches'])
+                elems[e]['othermatches'].update(p['othermatches'])
             else:
                 elems[e] = {'patterns': [index], 'targetmatches': set(p['targetmatches']), 'othermatches': set(p['othermatches'])}
-    return elems
+    return elems, targetmatches, othermatches
 
 
 def preprocess(base_model, ds, trans_path=None, scaler=None):

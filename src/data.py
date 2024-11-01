@@ -16,7 +16,7 @@ def load_from_directory(
     directory,
     batch_size=32,
     image_size=(256, 256),
-    shuffle=True,
+    shuffle=False,
     seed=None
 ):
 
@@ -92,7 +92,13 @@ def image_subset(image_paths, labels, class_names, binary_target=None, batch_siz
     return dataset
 
 
-
+def filter_transactions(df, column_prefix, label):
+    col = [c for c in df.columns if column_prefix in c]
+    sel = df.loc[df['label'] == label].drop(const.META, axis=1)[col]
+    notsel = df.loc[df['label'] != label].drop(const.META, axis=1)[col]
+    print('target # instances: ' + str(len(sel)))
+    print('other # instances: ' + str(len(notsel)))
+    return sel, notsel
 
 
 

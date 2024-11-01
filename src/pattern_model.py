@@ -20,7 +20,13 @@ class MatchLayer(layers.Layer):
     def call(self, inputs):
         bouts = self.binarizer(inputs)
         selected = tf.gather(bouts, indices=self.pat_index, axis=1)
+        #it = tf.gather(inputs, indices=self.pat_index, axis=1)
         matches = tf.map_fn(tf.reduce_all, selected)
+        #a = tf.reduce_any(matches)
+        #if a:
+        #    print('match')
+        #else:
+        #    print('none')
         return matches
 
 
@@ -44,12 +50,13 @@ class BinaryToCategorical(layers.Layer):
 
 
 class PatternBranch(layers.Layer):
-    def __init__(self, feat_extract, pat_matcher, base_pred, pat_pred, **kwargs):
+    def __init__(self, feat_extract, pat_matcher, base_pred, pat_pred, pattern_set_index, **kwargs):
         super().__init__(**kwargs)
         self.feat_extract = feat_extract
         self.pat_matcher = pat_matcher
         self.base_pred = base_pred
         self.pat_pred = pat_pred
+        self.pattern_set_index = pattern_set_index
         self.categorizer = BinaryToCategorical(0, 3)
         self.matchcount = tf.Variable(0)
         self.matchpatcount = tf.Variable(0)
@@ -57,6 +64,7 @@ class PatternBranch(layers.Layer):
         self.nonmatchcount = tf.Variable(0)
         self.match_evaluation = False
         self.pat_predictions = tf.Variable([[0.0]], shape=[None, 1])
+        #self.pat_predictions = tf.Variable([[0.0, 0.0, 0.0]], shape=[None, 3])
         self.base_match_predictions = tf.Variable([[0.0, 0.0, 0.0]], shape=[None, 3])
         self.pat_batch_matches = tf.Variable([0], shape=[None], dtype=tf.int32)
 
@@ -83,7 +91,7 @@ class PatternBranch(layers.Layer):
             patpredsarray = tf.TensorArray(inputs.dtype, dynamic_size=True, size=0)
             fmatches = tf.gather(feats[0], indices=midx, axis=0)
             fmatches.set_shape([None] + feats[0].shape[1:])
-            selectedfeats = tf.gather(fmatches, indices=self.pat_matcher.pat_index, axis=3)
+            selectedfeats = tf.gather(fmatches, indices=self.pattern_set_index, axis=3)
             patbinpreds = self.pat_pred(selectedfeats)
             if self.match_evaluation:
                 self.matchcount.assign(tf.size(midx))
@@ -92,6 +100,7 @@ class PatternBranch(layers.Layer):
                 self.base_match_predictions.assign(self.base_pred(fmatches))
 
             # Collect matching predictions classified as target class
+            tf.print(tf.size(patbinpreds))
             pidx = tf.cast(tf.reshape(tf.where(tf.squeeze(patbinpreds) >= 0.5), shape=[-1]), dtype=tf.int32)
             if not tf.equal(tf.size(pidx), 0):
                 if self.match_evaluation:
@@ -99,6 +108,7 @@ class PatternBranch(layers.Layer):
                 ppreds = tf.gather(patbinpreds, indices=pidx, axis=0)
                 ppreds.set_shape([None] + patbinpreds.shape[1:])
                 patpatpreds = self.categorizer(ppreds)
+                #patpredsarray = patpredsarray.scatter(pidx, ppreds)
                 patpredsarray = patpredsarray.scatter(pidx, patpatpreds)
 
             # Redo base prediction for pat-matching inputs with low conf
@@ -143,9 +153,11 @@ class PatternTrainer(layers.Layer):
         return preds
 
 
-def build_pattern_model(pattern, base_model, trans_model):
+def build_pattern_model(pattern, pattern_set, base_model, trans_model):
     pattern = list(pattern)
+    pattern_set = list(pattern_set)
     pattern.sort()
+    pattern_set.sort()
 
     # Feature extraction
     patlayername = mlutil.parse_feature_ref(pattern[0])[0]
@@ -158,29 +170,36 @@ def build_pattern_model(pattern, base_model, trans_model):
 
     # Pattern matcher
     blayer = trans_model.get_layer('pat_binarize')
+    pattern_set_index = [blayer.feature_names.index(p) for p in pattern_set]
     matcher = MatchLayer(blayer, pattern)
 
     s = featextract.output_shape[0]
-    inputs = keras.Input(shape=(s[1], s[2], len(pattern)))
+    inputs = keras.Input(shape=(s[1], s[2], len(pattern_set)))
     x = layers.MaxPooling2D((2, 2))(inputs)
-    x = layers.Conv2D(32, (3, 3))(x)
+    x = layers.Conv2D(128, (3, 3))(x)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2D(16, (3, 3))(x)
+    x = layers.Conv2D(64, (3, 3))(x)
+    x = layers.Activation('relu')(x)
+    x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Conv2D(32, (3, 3))(x)
     x = layers.Activation('relu')(x)
     x = layers.GlobalAveragePooling2D()(x)
     dense1 = layers.Dense(1, name='prediction', activation='sigmoid')(x)
+    #dense1 = layers.Dense(3, name='prediction', activation='softmax')(x)
     #dense3 = BinaryToCategorical(0, 3)(dense1)
     pattrain = Model(inputs=inputs, outputs=dense1, name='pat_train')
     #patpred = Model(inputs=inputs, outputs=dense3, name='pat_pred')
 
     inputs = keras.Input(shape=featextract.input_shape[1:])
-    x = PatternTrainer(featextract, pattrain, matcher.pat_index)(inputs)
+    x = PatternTrainer(featextract, pattrain, pattern_set_index)(inputs)
     pat_trainer = Model(inputs=inputs, outputs=x)
+    #pat_trainer.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+    #              metrics=['accuracy'])
     pat_trainer.compile(optimizer='adam', loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
                   metrics=['accuracy'])
 
     inputs = keras.Input(base_model.input_shape[1:])
-    x = PatternBranch(featextract, matcher, basepred, pattrain)(inputs)
+    x = PatternBranch(featextract, matcher, basepred, pattrain, pattern_set_index)(inputs)
     pmodel = Model(inputs=inputs, outputs=x)
     pmodel.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
                   metrics=['accuracy'])
@@ -195,6 +214,7 @@ def pat_evaluate(model, ds):
     matchbasecount = 0
     nonmatchcount = 0
     patacc = keras.metrics.BinaryAccuracy()
+    #patacc = keras.metrics.CategoricalAccuracy()
     patbaseacc = keras.metrics.CategoricalAccuracy()
     acc = keras.metrics.CategoricalAccuracy()
     model.layers[-1].match_evaluation = True
@@ -207,6 +227,7 @@ def pat_evaluate(model, ds):
         nonmatchcount += model.layers[-1].nonmatchcount.numpy()
         if batchmatchcount > 0:
             y_match = tf.gather(y_batch, indices=model.layers[-1].pat_batch_matches)
+            #y_batch_bin = y_match
             y_batch_bin = mlutil.categorical_to_binary(y_match, 0)
             patacc.update_state(y_batch_bin, model.layers[-1].pat_predictions)
             patbaseacc.update_state(y_match, model.layers[-1].base_match_predictions)
