@@ -1,8 +1,9 @@
 import tensorflow as tf
 import keras
-from keras import layers
+from keras import layers, models
 from keras.src.models import Model
 from keras.src.utils import Progbar
+import os
 from trans_model import build_feature_extraction
 import mlutil
 
@@ -100,7 +101,7 @@ class PatternBranch(layers.Layer):
                 self.base_match_predictions.assign(self.base_pred(fmatches))
 
             # Collect matching predictions classified as target class
-            tf.print(tf.size(patbinpreds))
+            #tf.print(tf.size(patbinpreds))
             pidx = tf.cast(tf.reshape(tf.where(tf.squeeze(patbinpreds) >= 0.5), shape=[-1]), dtype=tf.int32)
             if not tf.equal(tf.size(pidx), 0):
                 if self.match_evaluation:
@@ -139,10 +140,11 @@ class PatternBranch(layers.Layer):
 
 
 class PatternTrainer(layers.Layer):
-    def __init__(self, feat_extract, pat_pred, pat_index, **kwargs):
+    def __init__(self, pat_index, feat_extract=None, pat_pred=None, **kwargs):
         super().__init__(**kwargs)
         self.feat_extract = feat_extract
-        self.feat_extract.trainable = False
+        if self.feat_extract is not None:
+            self.feat_extract.trainable = False
         self.pat_pred = pat_pred
         self.pat_index = pat_index
 
@@ -152,6 +154,14 @@ class PatternTrainer(layers.Layer):
         preds = self.pat_pred(selectedfeats)
         return preds
 
+
+def build_pattern_trainer(pattern_set_index, feat_extract, pat_pred):
+    inputs = keras.Input(shape=feat_extract.input_shape[1:])
+    x = PatternTrainer(pattern_set_index, feat_extract, pat_pred)(inputs)
+    pat_trainer = Model(inputs=inputs, outputs=x)
+    pat_trainer.compile(optimizer='adam', loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
+                  metrics=['accuracy'])
+    return pat_trainer
 
 def build_pattern_model(pattern, pattern_set, base_model, trans_model):
     pattern = list(pattern)
@@ -190,13 +200,14 @@ def build_pattern_model(pattern, pattern_set, base_model, trans_model):
     pattrain = Model(inputs=inputs, outputs=dense1, name='pat_train')
     #patpred = Model(inputs=inputs, outputs=dense3, name='pat_pred')
 
-    inputs = keras.Input(shape=featextract.input_shape[1:])
-    x = PatternTrainer(featextract, pattrain, pattern_set_index)(inputs)
-    pat_trainer = Model(inputs=inputs, outputs=x)
+    #inputs = keras.Input(shape=featextract.input_shape[1:])
+    #x = PatternTrainer(pattern_set_index, featextract, pattrain)(inputs)
+    #pat_trainer = Model(inputs=inputs, outputs=x)
     #pat_trainer.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
     #              metrics=['accuracy'])
-    pat_trainer.compile(optimizer='adam', loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
-                  metrics=['accuracy'])
+    #pat_trainer.compile(optimizer='adam', loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
+    #              metrics=['accuracy'])
+    pat_trainer = build_pattern_trainer(pattern_set_index, featextract, pattrain)
 
     inputs = keras.Input(base_model.input_shape[1:])
     x = PatternBranch(featextract, matcher, basepred, pattrain, pattern_set_index)(inputs)

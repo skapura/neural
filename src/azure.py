@@ -63,6 +63,14 @@ class AzureSession:
         scp.get(const.AZURE_ROOT + source, dest)
         scp.close()
 
+    def upload_function(self, func_def):
+        path = 'src/remote_spec.py'
+        runcode = replace_func(path, func_def, 'run')
+        with open('session/temp_spec.py', 'w') as file:
+            file.write(runcode)
+        self.put('session/temp_spec.py', dest='neural/' + path)
+
+
     def train(self, model, epochs=1, data_loader=None):
         self.upload_spec('src/train_spec.py', data_loader)
         model.save('session/temp_model.keras')
@@ -91,12 +99,20 @@ class AzureSession:
                 file.write(evalcode)
             self.put('session/temp_spec.py', dest='neural/' + path)
 
+    def run_spec(self, path, func_def):
+        runcode = replace_func(path, func_def)
+        with open('session/temp_spec.py', 'w') as file:
+            file.write(runcode)
+        self.put('session/temp_spec.py', dest='neural/' + path)
 
-def replace_func(path, func_def):
+
+
+def replace_func(path, func_def, func_name='load_data'):
 
     # Parse function def
     fcode = inspect.getsource(func_def)
     rt = ast.parse(fcode).body[0]
+    rt.name = 'run'
 
     # Parse code file
     with open(path, 'r') as file:
@@ -106,7 +122,7 @@ def replace_func(path, func_def):
     # Replace function
     class ReplaceFunctionDef(ast.NodeTransformer):
         def visit_FunctionDef(self, node):
-            if node.name == 'load_data':
+            if node.name == func_name:
                 new_node = rt
                 return new_node
             return node

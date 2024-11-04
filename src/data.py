@@ -5,6 +5,7 @@ from keras.src.utils.image_dataset_utils import paths_and_labels_to_dataset
 from keras.src.backend.config import standardize_data_format
 import pandas as pd
 import numpy as np
+import pickle
 import math
 import const
 
@@ -592,3 +593,12 @@ def activation_info(bdf, exclude=const.META):
     head += ['gcount', 'gsupport', 'infogain']
     adf = pd.DataFrame(stats, columns=head, index=col)
     return classinfo, adf
+
+def save(obj, path):
+    with open(path, 'wb') as file:
+        pickle.dump(obj, file)
+
+def load(path):
+    with open(path, 'rb') as file:
+        obj = pickle.load(file)
+    return obj
