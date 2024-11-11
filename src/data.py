@@ -18,7 +18,8 @@ def load_from_directory(
     batch_size=32,
     image_size=(256, 256),
     shuffle=False,
-    seed=None
+    seed=None,
+    sample_size=None
 ):
 
     if seed is None:
@@ -38,6 +39,11 @@ def load_from_directory(
             f"No images found in directory {directory}. "
             f"Allowed formats: {ALLOWLIST_FORMATS}"
         )
+
+    if sample_size is not None:
+        samples = np.random.default_rng().choice(len(image_paths), sample_size, replace=False)
+        image_paths = [image_paths[s] for s in samples]
+        labels = [labels[s] for s in samples]
 
     dataset = paths_and_labels_to_dataset(
         image_paths=image_paths,
