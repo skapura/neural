@@ -73,13 +73,14 @@ def build_feature_extraction(base_model, output_layers=None, transaction_only=Tr
     x = [TransactionLayer(name='trans_' + lname)(xo) for xo, lname in zip(xb[:-1], output_layers[:-1])]
     x = layers.Concatenate(name='transaction')(x)
     if transaction_only:
-        model = Model(inputs=inputs, outputs=x)
+        model = Model(inputs=inputs, outputs=x, name='feats_to_trans')
         return model, xb[-1]
     else:
-        outs = [xe for xe in xb[:-1]]
+        outs = [layers.Identity()(xe) for xe in xb[:-1]]
         outs.append(x)
-        model = Model(inputs=inputs, outputs=outs)
+        model = Model(inputs=inputs, outputs=outs, name='feats_to_trans')
         return model
+
 
 # Build transaction model
 # feat_extract -> binarizer

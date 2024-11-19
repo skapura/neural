@@ -45,7 +45,9 @@ def train_base_model_remote(session, model_path, epochs):
     base_model.save(model_path)
     return base_model
 
+
 def remote_pat():
+    from pattern_model import build_pattern_trainer
     trainds = data.load_from_directory('datasets/images_large/train', shuffle=True)
     v = data.load('session/temp_vars.pickle')
     subds = data.image_subset(v['images'], v['labels'], trainds.class_names, binary_target=0)
@@ -55,9 +57,12 @@ def remote_pat():
     patsetindex = data.load('session/temp_pat_index.pickle')
 
     ptrain = build_pattern_trainer(patsetindex, featextract, patpred)
-    ptrain.fit(subds, epochs=2,
+    ptrain.fit(subds, epochs=10,
                callbacks=keras.callbacks.EarlyStopping(monitor='accuracy', mode='max', patience=3))
     ptrain.layers[-1].pat_pred.save_weights('session/ptrain.weights.h5')
+    r = ptrain.evaluate(subds, return_dict=True)
+    print(r)
+
 
 def train_pat_model_remote(session, ptrain, images, labels):
 
@@ -73,14 +78,15 @@ def train_pat_model_remote(session, ptrain, images, labels):
     session.put('session/temp_vars.pickle', 'neural/session')
     session.upload_function(remote_pat)
     session.execute('python src/remote_spec.py')
-
-    print(1)
+    session.get('neural/session/ptrain.weights.h5', 'session')
+    ptrain.layers[-1].pat_pred.load_weights('session/ptrain.weights.h5')
+    return ptrain
 
 
 def run():
     #tf.config.run_functions_eagerly(True)
-    session = AzureSession()
-    session.open(working_dir='neural')
+    #session = AzureSession()
+    #session.open(working_dir='neural')
     trainds = data.load_from_directory('datasets/images_large/train', shuffle=True)
     valds = data.load_from_directory('datasets/images_large/val', shuffle=True)
 
@@ -95,7 +101,7 @@ def run():
     print('transaction model')
     pat_layers = ['activation']
     trans_path = 'session/tmodel.keras'
-    #featextract, _ = build_feature_extraction(base_model, pat_layers)
+    featextract, _ = build_feature_extraction(base_model, pat_layers)
     #tmodel = build_transaction_model(base_model, trainds, pat_layers)
     #tmodel.save(trans_path)
     tmodel = models.load_model(trans_path)
@@ -118,7 +124,7 @@ def run():
     cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
     elems, targetmatches, othermatches = pats.unique_elements(cpats)
     patternset = list(elems.keys())
-    pattern = cpats[1]
+    pattern = cpats[0]
 
     print('train pattern model')
     pat_path = 'session/pmodel.keras'
@@ -128,17 +134,12 @@ def run():
     labels = [trainds.labels[p] for p in matches]
     subds = data.image_subset(images, labels, trainds.class_names, binary_target=0)
     pmodel, ptrain = build_pattern_model(pattern['pattern'], patternset, base_model, tmodel)
-    train_pat_model_remote(session, ptrain, images, labels)
-    #ptrain.fit(subds, epochs=2,
-    #           callbacks=keras.callbacks.EarlyStopping(monitor='accuracy', mode='max', patience=3))
-    #ptrain.layers[-1].pat_pred.save_weights('session/ptrain.weights.h5')
-    #ptrain.layers[-1].pat_pred.load_weights('session/ptrain.weights.h5')
-    ptrain.save('session/ptest.keras')
-    ptrain = models.load_model('session/ptest.keras')
+    ptrain = train_pat_model_remote(session, ptrain, images, labels)
 
     print('train dataset evaluation')
-    eval_pat_trn = ptrain.evaluate(subds, return_dict=True)
+    #eval_pat_trn = ptrain.evaluate(subds, return_dict=True)
     eval_pat = pat_evaluate(pmodel, trainds)
+    print(eval_pat)
     eval_base = base_model.evaluate(trainds, return_dict=True)
 
     print('eval dataset evaluation')

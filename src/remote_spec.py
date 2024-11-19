@@ -1,3 +1,4 @@
+import keras
 from keras import models
 import data
 import sys

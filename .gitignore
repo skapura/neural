@@ -23,5 +23,5 @@ __pycache__/
 *.xlsx
 *.pkl
 tlogs/
-src/models
+src/models/*.keras
 session/

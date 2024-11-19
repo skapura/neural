@@ -113,6 +113,7 @@ class PatternBranch(layers.Layer):
                 patpredsarray = patpredsarray.scatter(pidx, patpatpreds)
 
             # Redo base prediction for pat-matching inputs with low conf
+            #tf.print(len(tf.squeeze(patbinpreds)))
             bidx = tf.cast(tf.reshape(tf.where(tf.squeeze(patbinpreds) < 0.5), shape=[-1]), dtype=tf.int32)
             if not tf.equal(tf.size(bidx), 0):
                 if self.match_evaluation:
@@ -162,6 +163,7 @@ def build_pattern_trainer(pattern_set_index, feat_extract, pat_pred):
     pat_trainer.compile(optimizer='adam', loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
                   metrics=['accuracy'])
     return pat_trainer
+
 
 def build_pattern_model(pattern, pattern_set, base_model, trans_model):
     pattern = list(pattern)

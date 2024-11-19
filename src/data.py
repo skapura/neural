@@ -73,8 +73,9 @@ def labels_to_binary(labels, target):
 
 def image_subset(image_paths, labels, class_names, binary_target=None, batch_size=32, image_size=(256, 256)):
 
+    categorical_class_names = class_names
     if binary_target is not None:
-        labels = labels_to_binary(labels, binary_target)
+        labels = labels_to_binary(labels, class_names.index(binary_target))
         class_names = ['other', 'target']
 
     dataset = paths_and_labels_to_dataset(
@@ -93,10 +94,29 @@ def image_subset(image_paths, labels, class_names, binary_target=None, batch_siz
         dataset = dataset.batch(batch_size)
     dataset = dataset.prefetch(tf.data.AUTOTUNE)
     dataset.class_names = class_names
+    dataset.categorical_class_names = categorical_class_names
     dataset.file_paths = image_paths
     dataset.labels = labels
+    dataset.binary_target = binary_target
 
     return dataset
+
+
+def save_subset(ds, path):
+    info = {
+        'class_names': ds.class_names,
+        'categorical_class_names': ds.categorical_class_names,
+        'file_paths': ds.file_paths,
+        'labels': ds.labels,
+        'binary_target': ds.binary_target
+            }
+    save(info, path)
+
+
+def load_subset(path):
+    info = load(path)
+    ds = image_subset(info['file_paths'], info['labels'], info['categorical_class_names'], binary_target=info['binary_target'])
+    return ds
 
 
 def filter_transactions(df, column_prefix, label):
