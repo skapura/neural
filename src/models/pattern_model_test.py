@@ -51,8 +51,9 @@ def MatchLayer_test():
     #data.save_subset(pds, 'session/pds.pickle')
     pds = data.load_subset('session/pds.pickle')
     pmodel.train_model.fit(pds, epochs=10)
-    pm.save_pattern_model(pmodel, 'session/pmodel.zip')
+    #pm.save_pattern_model(pmodel, 'session/pmodel.zip')
     pmodel2 = pm.load_pattern_model('session/pmodel.zip')
+    pmodel2.train_model.fit(pds, epochs=5)
     pw = pmodel.get_weights()
     pw2 = pmodel2.get_weights()
 
