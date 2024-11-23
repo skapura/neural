@@ -5,7 +5,7 @@ from keras.src.models import Model
 from keras.src.utils import Progbar
 import pandas as pd
 import numpy as np
-import src.mlutil as mlutil
+import mlutil
 
 
 # Transform sets of feature maps into transactions
@@ -17,6 +17,7 @@ class TransactionLayer(layers.Layer):
         x = tf.map_fn(tf.reduce_max, x)
         return x
 
+    @tf.function
     def call(self, inputs, training=None):
         outputs = tf.map_fn(self.transform_instance, inputs)
         return outputs
@@ -46,15 +47,18 @@ class BinarizeLayer(layers.Layer):
     def compute_output_shape(self, input_shape):
         return input_shape
 
+    @tf.function
     def binarize_median(self, x):
         return tf.cond(tf.math.logical_and(tf.math.greater(x[1], 0.0), tf.math.greater_equal(x[0], x[1])),
                        lambda: tf.constant(True), lambda: tf.constant(False))
 
+    @tf.function
     def binarizer(self, x):
         c = tf.stack([x, self.medians], axis=1)
         r = tf.map_fn(self.binarize_median, c, fn_output_signature=tf.bool)
         return r
 
+    @tf.function
     def call(self, inputs, training=None):
         binned = tf.map_fn(self.binarizer, inputs, fn_output_signature=tf.bool)
         return binned

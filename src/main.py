@@ -1,5 +1,5 @@
 #from experiment_remote import run
-from models.pattern_model_test import run
+from experiment_8 import run
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf

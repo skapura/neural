@@ -66,45 +66,9 @@ class AzureSession:
     def upload_function(self, func_def):
         path = 'src/remote_spec.py'
         runcode = replace_func(path, func_def, 'run')
-        with open('session/temp_spec.py', 'w') as file:
+        with open('temp/temp_spec.py', 'w') as file:
             file.write(runcode)
-        self.put('session/temp_spec.py', dest='neural/' + path)
-
-
-    def train(self, model, epochs=1, data_loader=None):
-        self.upload_spec('src/train_spec.py', data_loader)
-        model.save('session/temp_model.keras')
-        self.put('session/temp_model.keras', dest='neural/session/temp_model.keras')
-        self.execute('python src/train_spec.py ' + str(epochs))
-        self.get('neural/session/temp_model.keras', dest='session/temp_model.keras')
-        trained = models.load_model('session/temp_model.keras', compile=True)
-        return trained
-
-    def evaluate(self, model, data_loader=None):
-        self.upload_spec('src/eval_spec.py', data_loader)
-        model.save('session/temp_model.keras')
-        self.put('session/temp_model.keras', dest='neural/session/temp_model.keras')
-        self.execute('python src/eval_spec.py')
-        self.get('neural/session/results.pkl', dest='session/results.pkl')
-        with open('session/results.pkl', 'rb') as file:
-            results = pickle.load(file)
-        return results
-
-    def upload_spec(self, path, func_def=None):
-        if func_def is None:
-            self.put(path, dest='neural/' + path)
-        else:
-            evalcode = replace_func(path, func_def)
-            with open('session/temp_spec.py', 'w') as file:
-                file.write(evalcode)
-            self.put('session/temp_spec.py', dest='neural/' + path)
-
-    def run_spec(self, path, func_def):
-        runcode = replace_func(path, func_def)
-        with open('session/temp_spec.py', 'w') as file:
-            file.write(runcode)
-        self.put('session/temp_spec.py', dest='neural/' + path)
-
+        self.put('temp/temp_spec.py', dest='neural/' + path)
 
 
 def replace_func(path, func_def, func_name='load_data'):

@@ -5,9 +5,9 @@ from keras import models
 from keras.src.utils import Progbar
 from zipfile import ZipFile
 import os
-import src.mlutil as mlutil
-import src.models.trans_model as tm
-import src.data as data
+import mlutil
+import models.trans_model as tm
+import data as data
 
 
 # Expects binary input
@@ -19,6 +19,7 @@ class MatchLayer(layers.Layer):
     def compute_output_shape(self, input_shape):
         return [None, 1]
 
+    @tf.function
     def call(self, inputs):
         matcharray = tf.TensorArray(tf.bool, size=len(self.pattern_set_index), dynamic_size=False)
         for i, pi in enumerate(self.pattern_set_index):
@@ -120,35 +121,33 @@ def build_pattern_predictor(input_shape):
 
 def save_pattern_model(pmodel, path):
     d = {'patterns': [list(l) for l in pmodel.patterns]}
-    data.save(d, 'session/p_data.pickle')
-    pmodel.base_model.save('session/p_base.keras')
-    pmodel.trans_model.save('session/p_trans.keras')
-    #pmodel.pat_pred.save('session/pttest.keras')
-    pmodel.save_weights('session/p_model.weights.h5')
+    data.save(d, 'temp/p_data.pickle')
+    pmodel.base_model.save('temp/p_base.keras')
+    pmodel.trans_model.save('temp/p_trans.keras')
+    pmodel.save_weights('temp/p_model.weights.h5')
     with ZipFile(path, 'w') as z:
-        z.write('session/p_data.pickle')
-        z.write('session/p_base.keras')
-        z.write('session/p_trans.keras')
-        z.write('session/p_model.weights.h5')
-    os.remove('session/p_data.pickle')
-    os.remove('session/p_base.keras')
-    os.remove('session/p_trans.keras')
-    os.remove('session/p_model.weights.h5')
+        z.write('temp/p_data.pickle', arcname='p_data.pickle')
+        z.write('temp/p_base.keras', arcname='p_base.keras')
+        z.write('temp/p_trans.keras', arcname='p_trans.keras')
+        z.write('temp/p_model.weights.h5', arcname='p_model.weights.h5')
+    os.remove('temp/p_data.pickle')
+    os.remove('temp/p_base.keras')
+    os.remove('temp/p_trans.keras')
+    os.remove('temp/p_model.weights.h5')
 
 
 def load_pattern_model(path=''):
     with ZipFile(path, 'r') as z:
-        z.extractall()
-    d = data.load('session/p_data.pickle')
-    base_model = models.load_model('session/p_base.keras', compile=False)
-    trans_model = models.load_model('session/p_trans.keras')
-    #pat_pred = models.load_model('session/pttest.keras')
+        z.extractall(path='temp')
+    d = data.load('temp/p_data.pickle')
+    base_model = models.load_model('temp/p_base.keras', compile=False)
+    trans_model = models.load_model('temp/p_trans.keras')
     pmodel = build_pattern_model(d['patterns'], base_model, trans_model)
-    pmodel.load_weights('session/p_model.weights.h5')
-    os.remove('session/p_data.pickle')
-    os.remove('session/p_base.keras')
-    os.remove('session/p_trans.keras')
-    os.remove('session/p_model.weights.h5')
+    pmodel.load_weights('temp/p_model.weights.h5')
+    os.remove('temp/p_data.pickle')
+    os.remove('temp/p_base.keras')
+    os.remove('temp/p_trans.keras')
+    os.remove('temp/p_model.weights.h5')
     return pmodel
 
 

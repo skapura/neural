@@ -6,6 +6,8 @@ from keras.src.models import Functional
 import src.models.trans_model as tm
 import src.models.pattern_model as pm
 import src.data as data
+import src.patterns as pats
+
 
 def build_base_model():
     inputs = keras.Input(shape=(256, 256, 3))
@@ -39,28 +41,37 @@ def MatchLayer_test():
     #tmodel = tm.build_transaction_model(basemodel, trainds, outputlayers)
     #tmodel.save('session/tmodel.keras')
     tmodel = models.load_model('session/tmodel.keras')
+    #trans = tmodel.predict(trainds)
+    #bdf = tm.transactions_to_dataframe(tmodel, trans, trainds)
+    #bdf.to_csv('session/bdf.csv')
     bdf = pd.read_csv('session/bdf.csv', index_col='index')
-    patterns = [
-        ['activation-0', 'activation-3', 'activation-4'],
-        ['activation-6', 'activation-7', 'activation-8']
-    ]
+
+    minsup = 0.5
+    minsupratio = 1.1
+    sel, notsel = data.filter_transactions(bdf, 'activation-', 0)
+    cpats = pats.mine_patterns(sel, notsel, minsup, minsupratio)
+    patterns = [list(p['pattern']) for p in cpats[:10]]
+    #patterns = [
+    #    ['activation-0', 'activation-3', 'activation-4'],
+    #    ['activation-6', 'activation-7', 'activation-8']
+    #]
 
     pmodel = pm.build_pattern_model(patterns, basemodel, tmodel)
 
-    #pds = pm.match_dataset(pmodel, trainds, binary_target='church')
+    pds = pm.match_dataset(pmodel, trainds, binary_target='church')
     #data.save_subset(pds, 'session/pds.pickle')
-    pds = data.load_subset('session/pds.pickle')
+    #pds = data.load_subset('session/pds.pickle')
     pmodel.train_model.fit(pds, epochs=10)
     #pm.save_pattern_model(pmodel, 'session/pmodel.zip')
-    pmodel2 = pm.load_pattern_model('session/pmodel.zip')
-    pmodel2.train_model.fit(pds, epochs=5)
-    pw = pmodel.get_weights()
-    pw2 = pmodel2.get_weights()
+    #pmodel2 = pm.load_pattern_model('session/pmodel.zip')
+    #pmodel2.train_model.fit(pds, epochs=5)
+    #pw = pmodel.get_weights()
+    #pw2 = pmodel2.get_weights()
 
     r = pmodel.train_model.evaluate(pds, return_dict=True)
-    r2 = pmodel2.train_model.evaluate(pds, return_dict=True)
+    #r2 = pmodel2.train_model.evaluate(pds, return_dict=True)
     print(r)
-    print(r2)
+    #print(r2)
     print(1)
 
 def run():
