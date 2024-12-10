@@ -224,3 +224,9 @@ def match_dataset(ds, bdf, pattern, pattern_class):
     patds = data.split_dataset_paths(matchds, classname, label_mode='binary')
     baseds = data.load_dataset_selection(ds, bdf.loc[nonmatchidx]['path'].to_list())
     return patds, baseds
+
+
+def find_patterns(bdf, label, layer_name, min_sup=0.5, min_sup_ratio=1.1):
+    sel, notsel = data.filter_transactions(bdf, layer_name + '-', label)
+    cpats = mine_patterns(sel, notsel, min_sup, min_sup_ratio)
+    return cpats

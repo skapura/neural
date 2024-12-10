@@ -40,6 +40,11 @@ class BinarizeLayer(layers.Layer):
         })
         return config
 
+    def layer_medians(self, layer_name):
+        startidx = self.feature_names.index(next((x for x in self.feature_names if x.startswith(layer_name)), None))
+        endidx = self.feature_names.index(next((x for x in reversed(self.feature_names) if x.startswith(layer_name)), None))
+        return self.medians[startidx:endidx+1]
+
     def build(self, input_shape):
         super().build(input_shape)
         self.medians = self.add_weight(shape=(input_shape[-1],), initializer='zeros', trainable=True, name='medians')
@@ -70,6 +75,8 @@ class BinarizeLayer(layers.Layer):
 def build_feature_extraction(base_model, output_layers=None, transaction_only=True):
     base_model.trainable = False
     layermodel = mlutil.make_output_nodes(base_model, output_layers)
+    if output_layers is None:
+        output_layers = list(layermodel.output_names)
 
     inputs = keras.Input(base_model.input_shape[1:])
     layermodel.name = 'feat_extract'
@@ -90,6 +97,9 @@ def build_feature_extraction(base_model, output_layers=None, transaction_only=Tr
 # feat_extract -> binarizer
 def build_transaction_model(base_model, trainds, output_layers=None):
     featextract, baseoutput = build_feature_extraction(base_model, output_layers)
+    if output_layers is None:
+        output_layers = [l.name[6:] for l in featextract.layers if isinstance(l, TransactionLayer)]
+        output_layers.append('prediction')
 
     # Generate list of feature names
     featnames = []

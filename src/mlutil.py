@@ -110,6 +110,20 @@ def receptive_field(x, y, layers):
     return (startx, endx + 1), (starty, endy + 1)    # +1 so it's in [start, end) format
 
 
+def map_receptive_field(fmap, input_shape, layerinfo):
+    mask = np.zeros((input_shape[0], input_shape[1]), np.float32)
+    for y in range(fmap.shape[0]):
+        for x in range(fmap.shape[1]):
+            v = fmap[y, x] #.numpy()
+            if v > 0:
+                xf, yf = receptive_field(x, y, layerinfo)
+                rfield = mask[yf[0]:yf[1], xf[0]:xf[1]]
+                vals = np.empty(rfield.shape)
+                vals.fill(v)
+                np.maximum(rfield, vals, out=rfield)
+    return mask
+
+
 def heatmap(img_array, model, last_conv_layer_name, pred_index=None):
     # First, we create a model that maps the input image to the activations
     # of the last conv layer as well as the output predictions
